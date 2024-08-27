@@ -129,7 +129,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
-config.ini
+.ini
 
 # Spyder project settings
 .spyderproject
