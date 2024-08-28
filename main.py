@@ -1,9 +1,11 @@
 from aiogram import Bot, Dispatcher
-from aiogram.types import Message
+from aiogram.types import Message, ContentType
+from aiogram.filters import Command, CommandStart
+from aiogram import F
 import asyncio
 import logging
 import configparser
-from core.handlers.basic import get_start
+from core.handlers.basic import get_start, get_photo, enter
 
 
 config = configparser.ConfigParser()
@@ -27,9 +29,12 @@ async def start():
     bot = Bot(token=TOKEN)
     dp = Dispatcher()
     # Порядок обработки хэндлеров в диспетчере
+    dp.message.register(get_photo, F.photo)
+    dp.message.register(enter, Command(commands=['start']))
+    dp.message.register(get_start, Command(commands=['run', 'first']))
     dp.startup.register(start_bot)
     dp.shutdown.register(stop_bot)
-    dp.message.register(get_start)
+    # dp.message.register(get_start, CommandStart)
     try:
         await dp.start_polling(bot)
     finally:
