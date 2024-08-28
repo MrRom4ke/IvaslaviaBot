@@ -5,7 +5,7 @@ from aiogram import F
 import asyncio
 import logging
 import configparser
-from core.handlers.basic import get_start, get_photo, enter
+from core.handlers.basic import get_start, get_photo
 
 
 config = configparser.ConfigParser()
@@ -30,8 +30,7 @@ async def start():
     dp = Dispatcher()
     # Порядок обработки хэндлеров в диспетчере
     dp.message.register(get_photo, F.photo)
-    dp.message.register(enter, Command(commands=['start']))
-    dp.message.register(get_start, Command(commands=['run', 'first']))
+    dp.message.register(get_start, Command(commands=['start']))
     dp.startup.register(start_bot)
     dp.shutdown.register(stop_bot)
     # dp.message.register(get_start, CommandStart)
