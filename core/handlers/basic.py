@@ -18,3 +18,21 @@ async def get_photo(msg: Message, bot: Bot):
         await bot.download(file.file_id, 'photo.jpg')
     except:
         await msg.answer('Error')
+
+async def get_hello(msg: Message, bot: Bot):
+    await msg.answer('And hello to you')
+
+async def get_first_option(msg: Message, bot: Bot):
+    await msg.answer('Link to main chanel')
+
+async def get_second_option(msg: Message, bot: Bot):
+    await msg.answer('Application')
+
+async def get_third_option(msg: Message, bot: Bot):
+    await msg.answer('How to use draw')
+
+async def get_fourth_option(msg: Message, bot: Bot):
+    await msg.answer('Draws rules')
+
+async def get_fifth_option(msg: Message, bot: Bot):
+    await msg.answer('Call to operator')
