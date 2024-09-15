@@ -5,9 +5,14 @@ from aiogram import Bot, Dispatcher
 from aiogram.types import Message, ContentType
 from aiogram.filters import Command, CommandStart
 from core.filters.iscontact import IsTrueContact
+from core.utils.callback import MacInfo
+from core.utils.stateform import StepsForm
+
 from aiogram import F
-from core.handlers.basic import get_start, get_photo, get_hello, get_first_option, get_second_option, get_third_option, get_fourth_option, get_fifth_option
+from core.handlers.basic import get_start, get_photo, get_hello, get_first_option, get_second_option, get_third_option, get_fourth_option, get_fifth_option, get_location
 from core.handlers.contact import get_true_contact, get_false_contact
+from core.handlers.callback import select_macbook
+from core.handlers.form import get_form, get_name
 from core.utils.commands import set_commands
 
 
@@ -33,10 +38,16 @@ async def start():
     bot = Bot(token=TOKEN)
     dp = Dispatcher()
     # Порядок обработки хэндлеров в диспетчере
+    dp.message.register(get_name, StepsForm.GET_NAME)
+    dp.message.register(get_form, Command(commands=['form']))
+    dp.callback_query.register(get_third_option, MacInfo.filter())
+    dp.callback_query.register(get_third_option, F.data.startswith('apple_'))
+    dp.message.register(get_location, F.content_type == ContentType.LOCATION)
     dp.message.register(get_true_contact, F.contact, IsTrueContact())
     dp.message.register(get_false_contact, F.contact)
     dp.message.register(get_first_option, Command(commands='/first'))
-    # dp.message.register(get_first_option, F.text == '1')
+    dp.message.register(get_hello, F.text == 'Hello')
+    dp.message.register(get_first_option, F.text == '1')
     dp.message.register(get_second_option, F.text == '2')
     dp.message.register(get_third_option, F.text == '3')
     dp.message.register(get_fourth_option, F.text == '4')

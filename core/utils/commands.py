@@ -11,5 +11,6 @@ async def set_commands(bot: Bot):
         BotCommand(command='/fourth', description='Условия участия в розыгрыше'),
         BotCommand(command='/fifth', description='Вызвать свободного оператора'),
         BotCommand(command='/help', description='Use if you need halp'),
+        BotCommand(command='form', description='Start questionary'),
     ]
     await bot.set_my_commands(commands, BotCommandScopeDefault())
