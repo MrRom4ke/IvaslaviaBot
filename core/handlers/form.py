@@ -13,5 +13,17 @@ async def get_name(msg: Message, state: FSMContext):
     await state.set_state(StepsForm.GET_SURNAME)
 
 async def get_surname(msg: Message, state: FSMContext):
-    await msg.answer(f'{state.get_data().get('name')} surmane is {msg.text}, put your age')
+    context_data = await state.get_data()
+    await msg.answer(f'{context_data.get('name')} surmane is {msg.text}, put your age')
     await state.update_data(surname=msg.text)
+    await state.set_state(StepsForm.GET_AGE)
+
+async def get_age(msg: Message, state: FSMContext):
+    await msg.answer(f'Your age is: {msg.text}')
+    context_data = await state.get_data()
+    await msg.answer(f'Saved data is: {context_data}')
+    name = context_data.get('name')
+    surname = context_data.get('surname')
+    data_user = f'This is your data: Name - {name}, Surname - {surname}, Age - {msg.text}'
+    await msg.answer(data_user)
+    await state.clear()

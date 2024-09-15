@@ -12,7 +12,7 @@ from aiogram import F
 from core.handlers.basic import get_start, get_photo, get_hello, get_first_option, get_second_option, get_third_option, get_fourth_option, get_fifth_option, get_location
 from core.handlers.contact import get_true_contact, get_false_contact
 from core.handlers.callback import select_macbook
-from core.handlers.form import get_form, get_name
+from core.handlers.form import get_form, get_name, get_surname, get_age
 from core.utils.commands import set_commands
 
 
@@ -38,6 +38,8 @@ async def start():
     bot = Bot(token=TOKEN)
     dp = Dispatcher()
     # Порядок обработки хэндлеров в диспетчере
+    dp.message.register(get_age, StepsForm.GET_AGE)
+    dp.message.register(get_surname, StepsForm.GET_SURNAME)
     dp.message.register(get_name, StepsForm.GET_NAME)
     dp.message.register(get_form, Command(commands=['form']))
     dp.callback_query.register(get_third_option, MacInfo.filter())
