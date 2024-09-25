@@ -2,20 +2,13 @@ from aiogram import Bot
 from aiogram.types import Message
 from aiogram.types import CallbackQuery
 from core.keyboards.reply import reply_keyboard, loc_tel_poll_keyboard, get_reply_builder
-from core.keyboards.inline import select_macbook, get_inline_keyboard
+from core.keyboards.inline import select_macbook, get_inline_keyboard, start_inline_keyboard
+
+
 
 
 async def get_start(msg: Message, bot: Bot):
-    await bot.send_message(msg.from_user.id, 
-                           f'''Привет {msg.from_user.first_name}!
-Введи цифру из предложенных чтобы узнать больш: 
-1. Ссылка на основной канал. 
-2. Подать заявку для участия.
-3. Как устроен розыгрыш.
-4. Условия участия в розыгрыше. 
-5. Вызвать свободного оператора.''',
-                            reply_markup=reply_keyboard,
-)
+    await bot.send_message(msg.from_user.id, f'Привет {msg.from_user.first_name}!', reply_markup=start_inline_keyboard())
 
 async def get_photo(msg: Message, bot: Bot):
     await msg.answer('Ok, you send me photo, I will save it')

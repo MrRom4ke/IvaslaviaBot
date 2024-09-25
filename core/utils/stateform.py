@@ -5,3 +5,5 @@ class StepsForm(StatesGroup):
     GET_NAME = State()
     GET_SURNAME = State()
     GET_AGE = State()
+
+    GET_SCREEN = State()

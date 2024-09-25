@@ -22,3 +22,14 @@ def get_inline_keyboard():
     keyboard_bulder.button(text='Profile', url='http://t.me/zloiqw')
     keyboard_bulder.adjust(3)
     return keyboard_bulder.as_markup()
+
+def start_inline_keyboard():
+    user_id = 1120483862
+    kb_builder = InlineKeyboardBuilder()
+    kb_builder.button(text='Ссылка на основной канал', url='http://t.me/ivaslavskov')
+    kb_builder.button(text='Подать заявку для участия', callback_data='Участие')
+    kb_builder.button(text='Как устроен розыгрыш', callback_data='Текст розыгрыша')
+    kb_builder.button(text='Условия участия в розыгрыше', callback_data='Условия розыгрыша')
+    kb_builder.button(text='Вызвать свободного оператора', url=f'tg://user?id={user_id}')
+    kb_builder.adjust(1)
+    return kb_builder.as_markup()
