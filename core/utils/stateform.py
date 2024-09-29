@@ -7,3 +7,4 @@ class StepsForm(StatesGroup):
     GET_AGE = State()
 
     GET_SCREEN = State()
+    CHECK_IMAGE = State()

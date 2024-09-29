@@ -25,5 +25,26 @@ async def start_draw(call: CallbackQuery, bot: Bot, state: FSMContext):
     await bot.send_message(call.from_user.id, 'Пришлите скриншот!')
     await state.set_state(StepsForm.GET_SCREEN)
 
-async def get_screen(msg: Message, state: FSMContext):
-    await msg.answer('Ваш скриншот обрабатывается оператором')
+async def get_screen(msg: Message, state: FSMContext, bot: Bot):
+    try:
+        file = await bot.get_file(msg.photo[-1].file_id)
+        user_id = msg.from_user.id
+        print(user_id)
+        await bot.download(file.file_id, f'IvaslaviaBot/images/{str(user_id)}.jpg')
+        await msg.answer('Ваш скриншот обрабатывается оператором')
+        await state.update_data(user_id=user_id)
+        await state.set_state(StepsForm.CHECK_IMAGE)
+        await bot.send_message(1120483862, text=f'Поступила заявка на участие от пользователя {user_id}')
+        with open(f'IvaslaviaBot/images/{str(user_id)}.jpg', 'rb') as photo:
+            await bot.send_photo(1120483862, photo=photo, caption=f'Фото от пользователя {user_id}')
+    except:
+        await msg.answer('Ошибка, пришлите картинку')
+
+async def check_image_operator(msg: Message, state: FSMContext, bot: Bot):
+    pass
+    # user_data = await state.get_data()
+    # user_id = user_data.get('user_id')
+    # print('another', user_id)
+    # await bot.send_message(1120483862, text=f'Поступила заявка на участие от пользователя {user_id}')
+    # # await bot.send_photo(1120483862, )
+    
