@@ -1,40 +1,100 @@
-from aiogram import Bot
-from aiogram.types import Message
-from aiogram.types import CallbackQuery
-from core.keyboards.reply import reply_keyboard, loc_tel_poll_keyboard, get_reply_builder
-from core.keyboards.inline import select_macbook, get_inline_keyboard, start_inline_keyboard
+import logging
+import os
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, InputFile
+from aiogram.fsm.context import FSMContext
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from core.config import ADMIN_ID
+from database import add_application, get_application, increment_attempts
+from core.utils.stateform import ApplicationForm
+from core.keyboards.inline import start_inline_keyboard
 
+# Команда /start
+async def cmd_start(message: Message):
+    kb = start_inline_keyboard()
+    await message.answer("Добро пожаловать! Выберите опцию ниже:", reply_markup=kb)
 
+# Обработка команды /second
+async def cmd_second(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    application = get_application(user_id)
+    
+    if application and application[2] in ['pending', 'payment_pending', 'payment_confirmed']:
+        await message.answer("Ваша заявка уже находится на рассмотрении или одобрена.")
+        return
+    
+    await message.answer("Пожалуйста, отправьте скриншот участника.")
+    await state.set_state(ApplicationForm.WAITING_FOR_SCREEN)
 
-async def get_start(msg: Message, bot: Bot):
-    await bot.send_message(msg.from_user.id, f'Привет {msg.from_user.first_name}!', reply_markup=start_inline_keyboard())
+# Обработка получения изображения
+async def handle_screen(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    application = get_application(user_id)
+    
+    if application and application[2] in ['pending', 'payment_pending', 'payment_confirmed']:
+        await message.answer("Ваша заявка уже находится на рассмотрении или одобрена.")
+        return
+    
+    if not message.photo:
+        await message.answer("Пожалуйста, отправьте изображение.")
+        return
+    
+    # try:
+    photo = message.photo[-1]
+    file = await message.bot.get_file(photo.file_id)
+    file_path = f'IvaslaviaBot/images/{user_id}.jpg'
+    await message.bot.download(file.file_id, file_path)
+    
+    # Сохраняем заявку в базе данных
+    add_application(user_id, file_path)
+    
+    await message.answer("Ваша заявка отправлена на проверку администратору.")
+    
+    # Создание инлайн-клавиатуры для администратора
+    admin_kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Одобрить", callback_data=f"approve_{user_id}"),
+                InlineKeyboardButton(text="Отклонить", callback_data=f"reject_{user_id}")
+            ]
+        ]
+    )
 
-async def get_photo(msg: Message, bot: Bot):
-    await msg.answer('Ok, you send me photo, I will save it')
-    try:
-        file = await bot.get_file(msg.photo[-1].file_id)
-        await bot.download(file.file_id, 'photo.jpg')
-    except:
-        await msg.answer('Error')
+    # Проверка существования файла
+    if not os.path.exists(file_path):
+        print(f"Файл не найден: {file_path}")
+    else:
+        # Отправка фотографии администратору с инлайн-клавиатурой
+        await message.bot.send_photo(ADMIN_ID, photo=file_path, reply_markup=admin_kb)
+        await message.bot.send_message(ADMIN_ID, f'Поступила заявка от пользователя {user_id}.')
+    await state.clear()
+    # except Exception as e:
+    #     logging.error(f"Ошибка при обработке изображения: {e}")
+    #     await message.answer("Произошла ошибка при сохранении изображения. Попробуйте снова.")
+    #     increment_attempts(user_id)
 
-async def get_hello(msg: Message, bot: Bot):
-    await msg.answer('And hello to you', reply_markup=loc_tel_poll_keyboard)
-
-async def get_location(msg: Message, bot: Bot):
-    await msg.answer(f'You sent me yor location it is Longitude:{msg.location.longitude} Latitude:{msg.location.latitude}')
-
-async def get_first_option(msg: Message, bot: Bot):
-    await msg.answer('Link to main chanel', reply_markup=get_reply_builder())
-
-async def get_second_option(msg: Message, bot: Bot):
-    await msg.answer('Application', reply_markup=select_macbook)
-
-async def get_third_option(call: CallbackQuery, bot: Bot):
-    await call.message.answer('How to use draw')
-
-async def get_fourth_option(msg: Message, bot: Bot):
-    await msg.answer('Draws rules', reply_markup=get_inline_keyboard())
-
-async def get_fifth_option(msg: Message, bot: Bot):
-    await msg.answer('Call to operator')
+# Обработка подтверждения оплаты пользователем
+async def handle_payment_confirmation(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    application = get_application(user_id)
+    
+    if not application or application[2] != 'payment_pending':
+        await message.answer("У вас нет заявки, ожидающей оплаты.")
+        return
+    
+    # Создание инлайн-клавиатуры для администратора
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton("Оплата подтверждена", callback_data=f"payment_confirm_{user_id}"),
+        InlineKeyboardButton("Оплата не подтверждена", callback_data=f"payment_reject_{user_id}")
+    )
+    admin_kb = builder.as_markup()
+    
+    await message.bot.send_message(
+        ADMIN_ID,
+        text=f'Пользователь {user_id} сообщил об оплате.',
+        reply_markup=admin_kb
+    )
+    
+    await message.answer("Ваше сообщение об оплате отправлено на проверку администратору.")
+    await state.clear()

@@ -1,50 +1,61 @@
 from aiogram import Bot
-from aiogram.types import Message
 from aiogram.types import CallbackQuery
 from aiogram.fsm.context import FSMContext
-from core.utils.stateform import StepsForm
+from database import update_status
+from core.utils.stateform import ApplicationForm
 
 
-async def select_macbook(call: CallbackQuery, bot: Bot):
-    firm = call.data.split('_')[0]
-    model = call.data.split('_')[1]
-    num_model = call.data.split('_')[2]
-    processor = call.data.split('_')[3]
-    year = call.data.split('_')[4]
-    answer = f'Hello {call.message.from_user.first_name}, you choose:\
-        Firm: {firm},\
-            Model: {model} {num_model} on chip {processor} {year} years'
-    await call.message.answer(answer)
-    await call.answer()
+# Обработка нажатия кнопок инлайн клавиатуры
+async def inline_handler(callback_query: CallbackQuery, state: FSMContext):
+    data = callback_query.data
+    if data == 'participate':
+        await callback_query.message.answer("Пожалуйста, отправьте скриншот участника.")
+        await state.set_state(ApplicationForm.WAITING_FOR_SCREEN)
+    elif data == 'draw_info':
+        await callback_query.message.answer("Здесь информация о том, как устроен розыгрыш.")
+    elif data == 'participation_conditions':
+        await callback_query.message.answer("Здесь условия участия в розыгрыше.")
+    else:
+        await callback_query.message.answer("Неизвестная команда.")
 
-async def get_help(call: CallbackQuery, bot: Bot):
-    user_id = 1120483862
-    await bot.send_message(chat_id=user_id, text='Привет! Мне нужна помощь с розыгрышем!')
+    await callback_query.answer()
 
-async def start_draw(call: CallbackQuery, bot: Bot, state: FSMContext):
-    await bot.send_message(call.from_user.id, 'Пришлите скриншот!')
-    await state.set_state(StepsForm.GET_SCREEN)
-
-async def get_screen(msg: Message, state: FSMContext, bot: Bot):
-    try:
-        file = await bot.get_file(msg.photo[-1].file_id)
-        user_id = msg.from_user.id
-        print(user_id)
-        await bot.download(file.file_id, f'IvaslaviaBot/images/{str(user_id)}.jpg')
-        await msg.answer('Ваш скриншот обрабатывается оператором')
-        await state.update_data(user_id=user_id)
-        await state.set_state(StepsForm.CHECK_IMAGE)
-        await bot.send_message(1120483862, text=f'Поступила заявка на участие от пользователя {user_id}')
-        with open(f'IvaslaviaBot/images/{str(user_id)}.jpg', 'rb') as photo:
-            await bot.send_photo(1120483862, photo=photo, caption=f'Фото от пользователя {user_id}')
-    except:
-        await msg.answer('Ошибка, пришлите картинку')
-
-async def check_image_operator(msg: Message, state: FSMContext, bot: Bot):
-    pass
-    # user_data = await state.get_data()
-    # user_id = user_data.get('user_id')
-    # print('another', user_id)
-    # await bot.send_message(1120483862, text=f'Поступила заявка на участие от пользователя {user_id}')
-    # # await bot.send_photo(1120483862, )
-    
+# Обработка подтверждения или отклонения заявки администратором
+async def admin_callback(bot: Bot, callback_query: CallbackQuery):
+    data = callback_query.data
+    if data.startswith("approve_") or data.startswith("reject_"):
+        action, user_id = data.split("_")
+        user_id = int(user_id)
+        
+        if action == "approve":
+            update_status(user_id, 'approved')
+            await callback_query.message.reply(f"Заявка пользователя {user_id} одобрена.")
+            
+            # Отправляем пользователю сообщение об одобрении и реквизиты для оплаты
+            payment_details = "Пожалуйста, оплатите участие по следующим реквизитам:\n\n[Ваши реквизиты]"
+            await bot.send_message(user_id, "Ваша заявка одобрена. " + payment_details)
+            
+            # Обновляем статус заявки
+            update_status(user_id, 'payment_pending')
+        elif action == "reject":
+            update_status(user_id, 'rejected')
+            await callback_query.message.reply(f"Заявка пользователя {user_id} отклонена.")
+            await bot.send_message(user_id, "Вы не выполнили условия конкурса. Ваша заявка отклонена.")
+        
+        await callback_query.answer()
+    elif data.startswith("payment_confirm_") or data.startswith("payment_reject_"):
+        action, user_id = data.split("_")
+        user_id = int(user_id)
+        
+        if action == "payment_confirm":
+            update_status(user_id, 'payment_confirmed')
+            await callback_query.message.reply(f"Оплата пользователя {user_id} подтверждена.")
+            await bot.send_message(user_id, "Ваша оплата подтверждена. Вы успешно участвуете в конкурсе!")
+        elif action == "payment_reject":
+            update_status(user_id, 'payment_failed')
+            await callback_query.message.reply(f"Оплата пользователя {user_id} не подтверждена.")
+            await bot.send_message(user_id, "Ваша оплата не подтверждена. Ваша заявка аннулирована.")
+        
+        await callback_query.answer()
+    else:
+        await callback_query.answer("Неизвестное действие.", show_alert=True)

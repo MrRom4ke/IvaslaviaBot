@@ -1,10 +1,5 @@
 from aiogram.fsm.state import StatesGroup, State
 
-
-class StepsForm(StatesGroup):
-    GET_NAME = State()
-    GET_SURNAME = State()
-    GET_AGE = State()
-
-    GET_SCREEN = State()
-    CHECK_IMAGE = State()
+class ApplicationForm(StatesGroup):
+    WAITING_FOR_SCREEN = State()
+    PAYMENT_CONFIRMATION = State()
