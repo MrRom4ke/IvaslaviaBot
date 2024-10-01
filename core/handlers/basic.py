@@ -1,6 +1,6 @@
 import logging
 import os
-from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, InputFile
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
@@ -23,7 +23,7 @@ async def cmd_second(message: Message, state: FSMContext):
         await message.answer("Ваша заявка уже находится на рассмотрении или одобрена.")
         return
     
-    await message.answer("Пожалуйста, отправьте скриншот участника.")
+    await message.answer("Пожалуйста, отправьте коректный скриншот участника.\nУ вас одна попытка\nЕсли ваша заявка была отклонена обратитесь в тех. поддержку")
     await state.set_state(ApplicationForm.WAITING_FOR_SCREEN)
 
 # Обработка получения изображения
@@ -60,13 +60,10 @@ async def handle_screen(message: Message, state: FSMContext):
         ]
     )
 
-    # Проверка существования файла
-    if not os.path.exists(file_path):
-        print(f"Файл не найден: {file_path}")
-    else:
-        # Отправка фотографии администратору с инлайн-клавиатурой
-        await message.bot.send_photo(ADMIN_ID, photo=file_path, reply_markup=admin_kb)
-        await message.bot.send_message(ADMIN_ID, f'Поступила заявка от пользователя {user_id}.')
+    # Отправка фотографии администратору с инлайн-клавиатурой
+    file_id = photo.file_id
+    await message.bot.send_photo(chat_id=ADMIN_ID, photo=file_id, reply_markup=admin_kb)
+    await message.bot.send_message(ADMIN_ID, f'Поступила заявка от пользователя {user_id}.')
     await state.clear()
     # except Exception as e:
     #     logging.error(f"Ошибка при обработке изображения: {e}")
@@ -85,8 +82,8 @@ async def handle_payment_confirmation(message: Message, state: FSMContext):
     # Создание инлайн-клавиатуры для администратора
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton("Оплата подтверждена", callback_data=f"payment_confirm_{user_id}"),
-        InlineKeyboardButton("Оплата не подтверждена", callback_data=f"payment_reject_{user_id}")
+        InlineKeyboardButton(text="Оплата подтверждена", callback_data=f"payment_confirm_{user_id}"),
+        InlineKeyboardButton(text="Оплата не подтверждена", callback_data=f"payment_reject_{user_id}")
     )
     admin_kb = builder.as_markup()
     

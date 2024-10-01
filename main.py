@@ -1,12 +1,12 @@
 import asyncio
 import logging
-import configparser
 import os
 import database
 
 from aiogram import Bot, Dispatcher
 from aiogram import F
 from aiogram.filters import Command
+
 from core.config import ADMIN_ID, TOKEN
 from core.handlers.basic import cmd_second, cmd_start, handle_payment_confirmation, handle_screen
 from core.handlers.callback import admin_callback, inline_handler
@@ -51,6 +51,7 @@ dp.callback_query.register(admin_callback, lambda c: c.data and (c.data.startswi
 # Запуск бота
 if __name__ == '__main__':
     try:
+        await set_commands(dp.)
         asyncio.run(dp.start_polling(bot, skip_updates=True, on_startup=on_startup, on_shutdown=on_shutdown))
     except (KeyboardInterrupt, SystemExit):
         logging.error("Bot stopped!")

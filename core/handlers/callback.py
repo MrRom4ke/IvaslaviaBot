@@ -1,7 +1,7 @@
 from aiogram import Bot
 from aiogram.types import CallbackQuery
 from aiogram.fsm.context import FSMContext
-from database import update_status
+from database import increment_attempts, update_status
 from core.utils.stateform import ApplicationForm
 
 
@@ -9,7 +9,7 @@ from core.utils.stateform import ApplicationForm
 async def inline_handler(callback_query: CallbackQuery, state: FSMContext):
     data = callback_query.data
     if data == 'participate':
-        await callback_query.message.answer("Пожалуйста, отправьте скриншот участника.")
+        await callback_query.message.answer("Пожалуйста, отправьте коректный скриншот участника.\nУ вас одна попытка\nЕсли ваша заявка была отклонена обратитесь в тех. поддержку")
         await state.set_state(ApplicationForm.WAITING_FOR_SCREEN)
     elif data == 'draw_info':
         await callback_query.message.answer("Здесь информация о том, как устроен розыгрыш.")
@@ -21,8 +21,9 @@ async def inline_handler(callback_query: CallbackQuery, state: FSMContext):
     await callback_query.answer()
 
 # Обработка подтверждения или отклонения заявки администратором
-async def admin_callback(bot: Bot, callback_query: CallbackQuery):
+async def admin_callback(callback_query: CallbackQuery):
     data = callback_query.data
+    bot = callback_query.bot
     if data.startswith("approve_") or data.startswith("reject_"):
         action, user_id = data.split("_")
         user_id = int(user_id)
@@ -39,12 +40,13 @@ async def admin_callback(bot: Bot, callback_query: CallbackQuery):
             update_status(user_id, 'payment_pending')
         elif action == "reject":
             update_status(user_id, 'rejected')
+            increment_attempts(user_id)
             await callback_query.message.reply(f"Заявка пользователя {user_id} отклонена.")
-            await bot.send_message(user_id, "Вы не выполнили условия конкурса. Ваша заявка отклонена.")
+            await bot.send_message(user_id, "Вы не выполнили условия конкурса. Ваша заявка отклонена.\nОбратитесь в тех поддержку")
         
         await callback_query.answer()
     elif data.startswith("payment_confirm_") or data.startswith("payment_reject_"):
-        action, user_id = data.split("_")
+        action, user_id = data.rsplit("_", 1)
         user_id = int(user_id)
         
         if action == "payment_confirm":
