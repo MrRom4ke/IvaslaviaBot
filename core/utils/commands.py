@@ -11,6 +11,5 @@ async def set_commands(bot: Bot):
         BotCommand(command='/third', description='Как устроен розыгрыш'),
         BotCommand(command='/fourth', description='Условия участия в розыгрыше'),
         BotCommand(command='/fifth', description='Вызвать свободного оператора'),
-        BotCommand(command="/confirm_payment", description="Подтвердить оплату")
     ]
     await bot.set_my_commands(commands)

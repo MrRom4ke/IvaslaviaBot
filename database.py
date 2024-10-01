@@ -56,3 +56,14 @@ def increment_attempts(user_id):
     ''', (user_id,))
     conn.commit()
     conn.close()
+
+#Функция удаления заявки из базы данных
+def delete_application(user_id: int):
+    connection = sqlite3.connect("applications.db")
+    cursor = connection.cursor()
+    
+    # Удаляем заявку пользователя по user_id
+    cursor.execute("DELETE FROM applications WHERE user_id = ?", (user_id,))
+    
+    connection.commit()
+    connection.close()
