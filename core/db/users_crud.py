@@ -48,3 +48,5 @@ def delete_user(user_id):
     cursor.execute(query, (user_id,))
     conn.commit()
     conn.close()
+
+

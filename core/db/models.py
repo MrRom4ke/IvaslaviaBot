@@ -29,7 +29,7 @@ def initialize_tables():
             application_id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER REFERENCES Users(user_id) ON DELETE CASCADE,
             drawing_id INTEGER REFERENCES Drawings(drawing_id) ON DELETE CASCADE,
-            status TEXT CHECK (status IN ('pending', 'approved', 'rejected', 'payment_pending', 'payment_confirmed')) NOT NULL,
+            status TEXT CHECK (status IN ('pending', 'approved', 'rejected', 'payment_pending', 'payment_confirmed', 'payment_reject')) NOT NULL,
             attempts INTEGER DEFAULT 0 CHECK (attempts >= 0),
             submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );

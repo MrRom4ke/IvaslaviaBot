@@ -5,6 +5,7 @@ from aiogram.fsm.context import FSMContext
 from IvaslaviaBot.config import ADMIN_ID
 from IvaslaviaBot.core.db.drawings_crud import get_upcoming_and_active_drawings
 from IvaslaviaBot.core.keyboards.drawing_inline import generate_drawings_keyboard
+from IvaslaviaBot.core.utils.menu_utils import update_or_send_callback_message
 
 # from core.db.models import delete_application, get_application, increment_attempts, update_status
 from IvaslaviaBot.core.utils.stateform import ApplicationForm
@@ -13,25 +14,19 @@ from IvaslaviaBot.core.utils.stateform import ApplicationForm
 
 # Обработка нажатия кнопок инлайн клавиатуры
 async def inline_handler(callback_query: CallbackQuery, state: FSMContext):
-    data = callback_query.data
-    if data == 'participate':
-        # Получаем список активных и предстоящих розыгрышей
-        drawings = get_upcoming_and_active_drawings()
-        if not drawings:
-            await callback_query.message.answer("На данный момент нет активных или предстоящих розыгрышей.")
-            return
-        # Отправляем инлайн-клавиатуру с розыгрышами
-        await callback_query.message.answer(
-            "Выберите розыгрыш, для которого хотите подать заявку:",
-            reply_markup=generate_drawings_keyboard(drawings)
-        )
-    elif data == 'draw_info':
-        await callback_query.message.answer("Здесь информация о том, как устроен розыгрыш.")
-    elif data == 'participation_conditions':
-        await callback_query.message.answer("Здесь условия участия в розыгрыше.")
-    else:
-        await callback_query.message.answer("Неизвестная команда.")
+    await state.update_data(previous_menu="start_menu")
 
+    # Получаем список активных и предстоящих розыгрышей
+    drawings = get_upcoming_and_active_drawings()
+    if not drawings:
+        await callback_query.message.answer("На данный момент нет активных или предстоящих розыгрышей.")
+        return
+    # Отправляем инлайн-клавиатуру с розыгрышами
+    await update_or_send_callback_message(
+        callback_query=callback_query,
+        text="Выберите розыгрыш:",
+        reply_markup=generate_drawings_keyboard(drawings)
+    )
     await callback_query.answer()
 
 # Обработка нажатия кнопки "Связаться с оператором"

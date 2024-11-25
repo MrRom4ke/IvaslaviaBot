@@ -1,9 +1,116 @@
-from aiogram.types import Message
+from aiogram.types import Message, CallbackQuery, FSInputFile
 from aiogram.fsm.context import FSMContext
 from aiogram import Bot
 import os
 
+from IvaslaviaBot.core.db.applications_crud import get_applications_awaiting_review, get_pending_participants, \
+    get_payment_pending_participants, update_application_status, get_application_by_user_and_drawing, create_application
+from IvaslaviaBot.core.keyboards.admin_inline import create_screenshot_review_keyboard
+from IvaslaviaBot.core.keyboards.app_inline import create_back_only_keyboard
+from IvaslaviaBot.core.utils.menu_utils import update_or_send_callback_message
+
+
 async def handle_screenshot(message: Message, state: FSMContext, bot: Bot):
+    """Обрабатывает скриншот пользователя и сохраняет его в папку."""
+    # Проверяем, что сообщение содержит изображение
+    if not message.photo:
+        await message.answer("Пожалуйста, отправьте одно изображение.")
+        return
+
+    # Получаем данные о выбранном розыгрыше из контекста состояния
+    data = await state.get_data()
+    drawing_id = data.get("selected_drawing_id")
+
+    if not drawing_id:
+        await message.answer("Произошла ошибка, розыгрыш не найден. Попробуйте снова.")
+        return
+
+    # Проверяем, есть ли существующая заявка пользователя на этот розыгрыш
+    application = get_application_by_user_and_drawing(message.from_user.id, drawing_id)
+
+    if application:
+        if application["status"] == "rejected":
+            # Если статус "rejected", обновляем скриншот и статус
+            update_application_status(application["application_id"], status="pending")
+    else:
+        # Создаем новую заявку, если ее еще нет
+        create_application(message.from_user.id, drawing_id)
+
+    # Получаем фотографию в наилучшем качестве
+    photo = message.photo[-1]
+
+    # Определяем путь для сохранения изображения
+    user_id = message.from_user.id
+    file_path = f"images/application/{user_id}_{drawing_id}.jpg"
+
+    # Убедимся, что папка существует
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+
+    # Скачиваем файл с помощью объекта бота
+    file = await bot.get_file(photo.file_id)
+    await bot.download_file(file.file_path, destination=file_path)
+
+    # Отправляем сообщение об успешной загрузке
+    await message.answer("Ваш скриншот был успешно сохранен и ожидает проверки.")
+    await state.clear()  # Завершаем состояние после обработки
+
+
+
+async def show_screenshot_review(callback_query: CallbackQuery, bot: Bot, state: FSMContext, participant_index: int = 0):
+    """Показывает скриншот участника и предоставляет кнопки для управления."""
+    # Сохраняем контекст предыдущего меню
+    await state.update_data(previous_menu="drawing_info")
+
+    # Получаем ID розыгрыша и участников
+    drawing_id = int(callback_query.data.split("_")[2])
+    participants = get_pending_participants(drawing_id)
+    total_participants = len(participants)
+
+    # Если нет участников
+    if not participants:
+        await update_or_send_callback_message(
+            callback_query=callback_query,
+            text="Нет участников, ожидающих проверки скриншотов.",
+            reply_markup=create_back_only_keyboard(drawing_id)
+        )
+        await callback_query.answer()
+        return
+
+    # Если текущий индекс выходит за границы, отображаем первого участника
+    if participant_index < 0 or participant_index >= total_participants:
+        participant_index = 0
+
+    # Получаем текущего участника
+    participant = participants[participant_index]
+    telegram_id = participant['telegram_id']
+    photo_path = os.path.abspath(f"images/application/{telegram_id}_{drawing_id}.jpg")
+
+    # Проверяем существование файла
+    if not os.path.exists(photo_path):
+        await callback_query.message.edit_text(
+            f"Скриншот для участника {participant_index + 1} отсутствует. Пожалуйста, проверьте данные.",
+            reply_markup=create_back_only_keyboard(drawing_id)
+        )
+        await callback_query.answer()
+        return
+
+    # Отправляем скриншот и кнопки управления
+    photo = FSInputFile(photo_path)
+    await callback_query.message.delete()  # Удаляем предыдущее сообщение
+    await bot.send_photo(
+        chat_id=callback_query.message.chat.id,
+        photo=photo,
+        caption=(
+            f"Участник {participant_index + 1} из {total_participants}:\n"
+            f"Telegram ID: [{telegram_id}](tg://user?id={telegram_id})\n"
+        ),
+        parse_mode="Markdown",
+        reply_markup=create_screenshot_review_keyboard(drawing_id, participant_index, total_participants)
+    )
+    await callback_query.answer()
+
+
+async def handle_payment_screen(message: Message, state: FSMContext, bot: Bot):
     """Обрабатывает скриншот пользователя и сохраняет его в папку."""
     # Проверяем, что сообщение содержит изображение
     if not message.photo:
@@ -23,7 +130,7 @@ async def handle_screenshot(message: Message, state: FSMContext, bot: Bot):
 
     # Определяем путь для сохранения изображения
     user_id = message.from_user.id
-    file_path = f"images/application/{user_id}_{drawing_id}.jpg"
+    file_path = f"images/payment/{user_id}_{drawing_id}.jpg"
 
     # Убедимся, что папка существует
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
@@ -33,5 +140,38 @@ async def handle_screenshot(message: Message, state: FSMContext, bot: Bot):
     await bot.download_file(file.file_path, destination=file_path)
 
     # Отправляем сообщение об успешной загрузке
-    await message.answer("Ваш скриншот был успешно сохранен и ожидает проверки.")
+    await message.answer("Ваш скриншот оплаты был успешно сохранен и ожидает проверки.")
+
     await state.clear()  # Завершаем состояние после обработки
+
+async def show_payment_review(callback_query: CallbackQuery, bot: Bot, participant_index: int = 0):
+    """Показывает скриншот участника и предоставляет кнопки для управления."""
+    drawing_id = int(callback_query.data.split("_")[2])  # Получаем ID розыгрыша
+    participants = get_payment_pending_participants(drawing_id)
+    total_participants = len(participants)
+
+    if not participants:
+        await callback_query.message.answer("Нет участников, ожидающих проверки скриншотов.")
+        return
+
+    participant = participants[participant_index]
+    telegram_id = participant['telegram_id']
+    photo_path = os.path.abspath(f"images/payment/{telegram_id}_{drawing_id}.jpg")
+
+    # Проверка существования файла
+    if not os.path.exists(photo_path):
+        await callback_query.message.edit_text(
+            f"Оплата участника {participant_index + 1} отсутствует. Пожалуйста, проверьте данные.",
+            reply_markup=create_back_only_keyboard(drawing_id)
+        )
+        return
+
+    photo = FSInputFile(photo_path)
+
+    await callback_query.message.delete()
+    await bot.send_photo(
+        chat_id=callback_query.message.chat.id,
+        photo=photo,
+        caption=f"Оплата участника {participant_index + 1} из {total_participants}",
+        reply_markup=create_screenshot_review_keyboard(drawing_id, participant_index, total_participants)
+    )

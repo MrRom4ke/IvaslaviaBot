@@ -1,6 +1,7 @@
 # actionlogs_crud.py
 from database_connection import get_connection
 
+
 def create_action_log(user_id, admin_id, action, details=None):
     query = """
     INSERT INTO ActionLogs (user_id, admin_id, action, details)
