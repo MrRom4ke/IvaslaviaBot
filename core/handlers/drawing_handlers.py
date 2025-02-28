@@ -2,75 +2,134 @@ from datetime import datetime
 
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
+from aiogram.utils.markdown import hbold
 
-from IvaslaviaBot.core.db.applications_crud import user_participates_in_drawing, create_application, get_status_counts
-from IvaslaviaBot.core.db.drawings_crud import get_drawing_by_id
-from IvaslaviaBot.core.keyboards.admin_inline import create_check_buttons
-from IvaslaviaBot.core.keyboards.drawing_inline import create_drawing_info_buttons
+from IvaslaviaBot.core.db.applications_crud import user_participates_in_drawing, create_application, get_status_counts, \
+    get_application_by_user_and_drawing, get_participants_by_status
+from IvaslaviaBot.core.db.drawings_crud import get_drawing_by_id, get_drawings_by_status, get_winners
+from IvaslaviaBot.core.keyboards.admin_inline import create_check_buttons, generate_winners_summary_keyboard
+from IvaslaviaBot.core.keyboards.drawing_inline import create_drawing_info_buttons, generate_end_drawings_keyboard, \
+    generate_drawing_summary_keyboard
 from IvaslaviaBot.core.utils.menu_utils import update_or_send_callback_message
 
 from IvaslaviaBot.core.utils.stateform import ApplicationForm
 
 
-async def participate_in_drawing(callback_query: CallbackQuery, state: FSMContext):
-    """Обрабатывает нажатие кнопки для подачи заявки на участие в розыгрыше."""
-    drawing_id = int(callback_query.data.split("_")[-1])
-    user_id = callback_query.from_user.id
-
-    # Проверяем, не участвует ли уже пользователь в данном розыгрыше
-    if user_participates_in_drawing(user_id, drawing_id):
-        await callback_query.message.answer("Вы уже подали заявку на участие в этом розыгрыше.")
-        return
-
-    # Создаем заявку на участие
-    try:
-        create_application(user_id, drawing_id)
-    except ValueError as e:
-        await callback_query.message.answer(str(e))
-        return
-
-    # Получаем название розыгрыша для сообщения
-    drawing = get_drawing_by_id(drawing_id)
-    drawing_title = drawing[0] if drawing else "Неизвестный"
-
-    # Удаляем сообщение с клавиатурой
-    await callback_query.message.delete()
-
-    # Отправляем короткое сообщение пользователю
-    await callback_query.message.answer(
-        f"Отлично! Для участия в розыгрыше \"{drawing_title}\" пришлите один корректный скриншот."
-    )
-
-    # Сохраняем ID розыгрыша в контекст состояния
-    await state.update_data(selected_drawing_id=drawing_id)
-    await state.set_state(ApplicationForm.WAITING_FOR_SCREEN)
-
-
 async def view_drawing_info(callback_query: CallbackQuery, state: FSMContext):
+    """Отображает информацию о выбранном розыгрыше и статус заявки пользователя."""
     await state.update_data(previous_menu="draws_menu")
 
     drawing_id = int(callback_query.data.split("_")[-1])
+    user_id = callback_query.from_user.id
+
     # Получаем информацию о розыгрыше через метод репозитория
     drawing = get_drawing_by_id(drawing_id)
+    print(drawing)
 
     if not drawing:
-        await callback_query.message.answer("Информация о выбранном розыгрыше не найдена.")
+        await callback_query.message.edit_text("Информация о выбранном розыгрыше не найдена.")
         return
 
-    # Форматируем даты
-    start_date = datetime.strptime(drawing[2], "%Y-%m-%d %H:%M:%S").strftime("%d.%m.%Y") if drawing[2] else "Не указана"
-    end_date = datetime.strptime(drawing[3], "%Y-%m-%d %H:%M:%S").strftime("%d.%m.%Y") if drawing[3] else "Не указана"
+    # Получаем заявку пользователя
+    application = get_application_by_user_and_drawing(user_id, drawing_id)
 
-    # Формируем сообщение
+    # Форматируем даты
+    start_date = datetime.strptime(drawing['start_date'], "%Y-%m-%d %H:%M:%S").strftime("%d.%m.%Y") if drawing['start_date'] else "Не указана"
+    end_date = datetime.strptime(drawing['end_date'], "%Y-%m-%d %H:%M:%S").strftime("%d.%m.%Y") if drawing['end_date'] else "Не указана"
+
+    # Формируем сообщение с информацией о розыгрыше
     info_message = (
-        f"Название: {drawing[0]}\n"
-        f"Описание: {drawing[1]}\n"
+        f"Название: {drawing['title']}\n"
+        f"Описание: {drawing['description']}\n"
         f"Дата начала: {start_date}\n"
-        f"Дата окончания: {end_date}"
+        f"Дата окончания: {end_date}\n\n"
     )
 
-    # Отправляем сообщение с информацией и кнопками
+    # Добавляем информацию о заявке пользователя
+    if application:
+        status = application["status"]
+        attempts = application.get("attempts", 0)
+
+        if status == "pending":
+            info_message += "🔵 Статус вашей заявки: Ожидает проверки скриншота.\n"
+        elif status == "approved":
+            info_message += "✅ Статус вашей заявки: Скриншот одобрен. Ожидается оплата.\n"
+        elif status == "rejected":
+            info_message += (
+                f"❌ Статус вашей заявки: Скриншот отклонён.\n"
+                f"У вас осталось попыток: {3 - attempts}.\n"
+                "Вы можете загрузить новый скриншот."
+            )
+        elif status == "payment_pending":
+            info_message += "💳 Статус вашей заявки: Ожидает проверки оплаты.\n"
+        elif status == "payment_confirmed":
+            info_message += "✅ Статус вашей заявки: Оплата подтверждена.\n"
+        elif status == "payment_reject":
+            info_message += "❌ Статус вашей заявки: Оплата отклонена. Вы можете загрузить новый скриншот оплаты."
+    else:
+        info_message += "🔘 У вас нет активной заявки на участие в этом розыгрыше.\n"
+
+    # Отправляем сообщение с информацией
     await callback_query.message.edit_text(info_message, reply_markup=create_drawing_info_buttons(drawing_id))
+
+
+async def continue_drawing(callback_query: CallbackQuery, state: FSMContext):
+    """Обрабатывает нажатие кнопки для продолжения участия в розыгрыше."""
+    drawing_id = int(callback_query.data.split("_")[-1])
+    user_id = callback_query.from_user.id
+
+    # Получаем текущую заявку пользователя
+    application = get_application_by_user_and_drawing(user_id, drawing_id)
+
+    if application:
+        status = application["status"]
+
+        if status == "pending":
+            # Пользователь ожидает проверки скриншота
+            await callback_query.message.edit_text(
+                "Ваша заявка находится в обработке. Пожалуйста, дождитесь завершения проверки."
+            )
+        elif status == "rejected":
+            # Пользователю нужно загрузить новый скриншот
+            await callback_query.message.edit_text(
+                "Ваш скриншот не прошёл проверку. Пожалуйста, загрузите новый скриншот для участия."
+            )
+            await state.update_data(selected_drawing_id=drawing_id)
+            await state.set_state(ApplicationForm.WAITING_FOR_SCREEN)
+        elif status == "payment_pending":
+            # Пользователь должен загрузить скриншот оплаты
+            await callback_query.message.edit_text(
+                "Ваша заявка одобрена. Пожалуйста, оплатите участие по следующим реквизитам:\n"
+                "[Ваши реквизиты]\nПосле оплаты, пришлите скриншот об оплате."
+            )
+            await state.update_data(selected_drawing_id=drawing_id)
+            await state.set_state(ApplicationForm.WAITING_FOR_PAYMENT_SCREEN)
+        elif status == "payment_confirmed":
+            # Оплата подтверждена
+            await callback_query.message.edit_text(
+                "Ваша заявка одобрена, и ваша оплата была подтверждена. Ожидайте завершения розыгрыша."
+            )
+        elif status == "payment_reject":
+            # Оплата отклонена
+            await callback_query.message.edit_text(
+                "Ваша оплата была отклонена. Пожалуйста, свяжитесь с организатором для решения проблемы."
+            )
+        else:
+            # Любой другой статус
+            await callback_query.message.edit_text(
+                "Ваша заявка находится в неизвестном состоянии. Пожалуйста, свяжитесь с поддержкой."
+            )
+    else:
+        # Создаём новую заявку, если её нет
+        create_application(user_id, drawing_id)
+        drawing = get_drawing_by_id(drawing_id)
+        drawing_title = drawing['title'] if drawing else "Неизвестный"
+
+        await callback_query.message.edit_text(
+            f"Отлично! Для участия в розыгрыше \"{drawing_title}\" пришлите один корректный скриншот."
+        )
+        await state.update_data(selected_drawing_id=drawing_id)
+        await state.set_state(ApplicationForm.WAITING_FOR_SCREEN)
 
 
 async def show_drawing_info(callback_query: CallbackQuery, state: FSMContext):
@@ -89,6 +148,9 @@ async def show_drawing_info(callback_query: CallbackQuery, state: FSMContext):
     payment_confirmed = status_counts.get('payment_confirmed', 0)
     payment_reject = status_counts.get('payment_reject', 0)
 
+    # Учитываем все статусы оплаты как часть одобренных
+    total_approved = approved + payment_pending + payment_confirmed + payment_reject
+
     if not drawing:
         await callback_query.message.answer("Информация о выбранном розыгрыше не найдена.")
         return
@@ -106,7 +168,7 @@ async def show_drawing_info(callback_query: CallbackQuery, state: FSMContext):
         f"Общая статистика заявок:\n"
         f"  Количество участников:      {participants_count}\n"
         f"  Ожидают проверки:           {pending}\n"
-        f"  Одобрено:                   {approved}\n"
+        f"  Одобрено:                   {total_approved}\n"
         f"  Отклонено:                  {rejected}\n"
         f"  Ожидают проверки оплаты:    {payment_pending}\n"
         f"  Подтверждено оплата:        {payment_confirmed}\n"
@@ -115,3 +177,97 @@ async def show_drawing_info(callback_query: CallbackQuery, state: FSMContext):
     )
 
     await update_or_send_callback_message(callback_query, info_message, reply_markup=create_check_buttons(drawing_id), parse_mode="Markdown")
+
+
+async def handle_end_draw_callback(query: CallbackQuery, state: FSMContext):
+    """Обрабатывает нажатие кнопки завершения розыгрыша."""
+    await state.update_data(previous_menu="admin_panel")
+
+    # Получаем список розыгрышей в статусе ready_to_draw
+    drawings = get_drawings_by_status(['ready_to_draw'])
+
+    if not drawings:
+        await query.message.answer("На данный момент нет розыгрышей, готовых к завершению.")
+        return
+
+    # Генерируем клавиатуру с розыгрышами
+    await update_or_send_callback_message(
+        callback_query=query,
+        text="Выберите розыгрыш, который хотите завершить:",
+        reply_markup=generate_end_drawings_keyboard(drawings)
+    )
+
+
+async def show_drawing_summary(query: CallbackQuery, state: FSMContext, drawing_id: int = None):
+    """Отображает информацию о розыгрыше и предоставляет выбор победителей."""
+
+    # Проверяем, передан ли drawing_id напрямую
+    if drawing_id is None:
+        drawing_id = int(query.data.split("_")[-1])
+
+    print(f"DEBUG: Received drawing_id={drawing_id}")
+
+    drawing = get_drawing_by_id(drawing_id)
+
+    if not drawing:
+        print(f"ERROR: drawing_id={drawing_id} not found in DB.")
+        await query.message.answer("Информация о розыгрыше не найдена.")
+        return
+
+    # Получаем количество победителей и участников со статусом "payment_confirmed"
+    winners_count = drawing.get("winners_count", 0)
+    participants_count = len(get_participants_by_status(drawing_id, status="payment_confirmed"))
+
+    # Форматируем сообщение
+    summary_message = (
+        f"🏆 Название: {drawing['title']}\n"
+        f"📅 Дата окончания: {drawing['end_date']}\n"
+        f"👥 Количество участников: {participants_count}\n"
+        f"🎖 Количество победителей: {winners_count}\n"
+    )
+
+    # Генерируем клавиатуру
+    if winners_count == 0:
+        reply_markup = generate_drawing_summary_keyboard(drawing_id, winners_count)  # Выбор числа победителей
+    else:
+        reply_markup = generate_winners_summary_keyboard(drawing_id)  # Выбор самих победителей
+
+    # Отправляем сообщение
+    await update_or_send_callback_message(query, summary_message, reply_markup)
+
+
+async def show_drawing_winners(query: CallbackQuery):
+    """Отображает список победителей для указанного розыгрыша."""
+    drawing_id = int(query.data.split("_")[-1])
+
+    # Получаем данные о розыгрыше
+    result = get_drawing_by_id(drawing_id)
+    print(f"DEBUG: get_drawing_by_id({drawing_id}) returned: {result}")  # 🔍 Проверяем, что пришло
+
+    # Если `result` — список, берем первый элемент
+    if isinstance(result, list) and result:
+        result = result[0]
+
+    # Проверяем, что это словарь
+    if not isinstance(result, dict):
+        await query.answer("Ошибка: данные о розыгрыше не найдены.", show_alert=True)
+        return
+
+    drawing_title = result.get("title", "Неизвестный розыгрыш")  # ✅ Теперь точно словарь
+
+    # Получаем победителей
+    winners = get_winners(drawing_id)
+
+    if not winners:
+        await query.answer("Победители еще не выбраны.", show_alert=True)
+        return
+
+    # Формируем список победителей
+    winners_list = "\n".join([
+        f"{i + 1}. [{w['telegram_id']}](tg://user?id={w['telegram_id']})"
+        for i, w in enumerate(winners)
+    ])
+
+    message_text = f"🏆 Победители розыгрыша **{drawing_title}**:\n\n{winners_list}"
+
+    await update_or_send_callback_message(query, message_text, parse_mode="Markdown")

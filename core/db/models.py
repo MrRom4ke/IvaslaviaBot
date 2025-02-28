@@ -21,7 +21,8 @@ def initialize_tables():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             start_date TIMESTAMP,
             end_date TIMESTAMP,
-            status TEXT CHECK (status IN ('active', 'completed', 'upcoming')) NOT NULL
+            status TEXT CHECK (status IN ('upcoming', 'active', 'ready_to_draw', 'completed')) NOT NULL,
+            winners_count INTEGER DEFAULT 0
         );
         """,
         """
@@ -29,7 +30,7 @@ def initialize_tables():
             application_id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER REFERENCES Users(user_id) ON DELETE CASCADE,
             drawing_id INTEGER REFERENCES Drawings(drawing_id) ON DELETE CASCADE,
-            status TEXT CHECK (status IN ('pending', 'approved', 'rejected', 'payment_pending', 'payment_confirmed', 'payment_reject')) NOT NULL,
+            status TEXT CHECK (status IN ('pending', 'approved', 'rejected', 'payment_pending', 'payment_confirmed', 'payment_reject', 'completed')) NOT NULL,
             attempts INTEGER DEFAULT 0 CHECK (attempts >= 0),
             submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
@@ -61,7 +62,16 @@ def initialize_tables():
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             details TEXT
         );
+        """,
         """
+        CREATE TABLE IF NOT EXISTS Winners (
+            winner_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            drawing_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            FOREIGN KEY (drawing_id) REFERENCES Drawings(drawing_id),
+            FOREIGN KEY (user_id) REFERENCES Users(user_id)
+        );
+        """,
     ]
 
     conn = get_connection()

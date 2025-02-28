@@ -2,18 +2,23 @@ import os
 from datetime import datetime
 
 from aiogram import Bot
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, FSInputFile
 
-from IvaslaviaBot.core.db.applications_crud import get_confirmed_participants, update_application_status, \
-    get_pending_participants, increase_attempts, delete_application, get_application_by_user_and_drawing
+from IvaslaviaBot.core.db.applications_crud import update_application_status, get_pending_participants, \
+    increase_attempts, delete_application, get_application_by_user_and_drawing, get_participants_by_status
 from IvaslaviaBot.core.db.drawings_crud import create_new_drawing, update_drawings_status, \
-    get_completed_drawings, get_upcoming_and_active_drawings
+    get_completed_drawings, get_drawings_by_status, set_winners_count_in_db, get_winners, get_winners_count, \
+    set_drawing_status
+from IvaslaviaBot.core.db.winners_crud import add_winner
 from IvaslaviaBot.core.handlers.application_handlers import show_screenshot_review
+from IvaslaviaBot.core.handlers.drawing_handlers import show_drawing_summary
 from IvaslaviaBot.core.keyboards.admin_inline import generate_admin_menu_keyboard, cancel_button_keyboard, \
-    create_back_button_keyboard
+    generate_winner_selection_keyboard
 from IvaslaviaBot.core.keyboards.app_inline import create_back_only_keyboard
-from IvaslaviaBot.core.keyboards.drawing_inline import generate_drawings_list_keyboard
+from IvaslaviaBot.core.keyboards.drawing_inline import generate_drawings_list_keyboard, generate_drawings_keyboard, \
+    generate_complete_drawing_keyboard, generate_completed_drawings_list_keyboard
 from IvaslaviaBot.core.utils.menu_utils import update_or_send_message, update_or_send_callback_message
 from IvaslaviaBot.core.utils.stateform import ApplicationForm, NewDrawingState
 from IvaslaviaBot.core.keyboards.inline import admin_keyboard
@@ -38,13 +43,20 @@ async def show_admin_panel(message, state):
     await state.update_data(previous_menu="admin_panel")
 
     # Обновляем статусы розыгрышей
-    active_count, upcoming_count = update_drawings_status()
+    draws_status_dict = update_drawings_status()
+    upcoming_count = draws_status_dict['upcoming']
+    active_count = draws_status_dict['active']
+    ready_to_draw_count = draws_status_dict['ready_to_draw']
+    completed = draws_status_dict['completed']
+
     await update_or_send_message(
         message=message,
         text=(
             f"Админ-панель:\n\n"
-            f"Активные розыгрыши:          {active_count}\n"
-            f"Предстоящие розыгрыши:   {upcoming_count}\n\n"
+            f"Предстоящие розыгрыши:          {upcoming_count}\n"
+            f"Активные розыгрыши:                 {active_count}\n"
+            f"В ожидании розыгрыши:             {ready_to_draw_count}\n"
+            f"Завершенные розыгрыши:          {completed}\n\n"
             "Выберите действие:"
         ),
         reply_markup=admin_keyboard()
@@ -66,9 +78,18 @@ async def handle_admin_callback(query: CallbackQuery, state: FSMContext):
             reply_markup=generate_admin_menu_keyboard()
         )
 
-    elif query.data == "end_draw":
-        await query.message.answer("Розыгрыш завершен.")
-        # Логика для завершения розыгрыша
+    # elif query.data == "end_draw":
+    #     # Получаем список активных и предстоящих розыгрышей
+    #     drawings = get_drawings_by_status(['ready_to_draw'])
+    #     if not drawings:
+    #         await query.message.answer("На данный момент нет активных или предстоящих розыгрышей.")
+    #         return
+    #     # Отправляем инлайн-клавиатуру с розыгрышами
+    #     await update_or_send_callback_message(
+    #         callback_query=query,
+    #         text="Выберите розыгрыш который хотите завершить:",
+    #         reply_markup=generate_drawings_keyboard(drawings)
+    #     )
 
     await query.answer()  # Закрываем уведомление в Telegram
 
@@ -134,7 +155,7 @@ async def show_active_draws(callback_query: CallbackQuery, state: FSMContext):
     """Отображает список активных розыгрышей."""
     await state.update_data(previous_menu="active_draws")
 
-    drawings = get_upcoming_and_active_drawings()  # Предположим, метод возвращает список активных розыгрышей
+    drawings = get_drawings_by_status(['upcoming', 'active'])  # Предположим, метод возвращает список активных розыгрышей
     if not drawings:
         await callback_query.message.edit_text(
             "Нет активных розыгрышей.",
@@ -151,6 +172,7 @@ async def show_active_draws(callback_query: CallbackQuery, state: FSMContext):
 #TODO Доделать функционал
 async def show_completed_draws(callback_query: CallbackQuery):
     """Отображает список завершенных розыгрышей."""
+    print("Отображение всех завершенных розыгрышей")
     drawings = get_completed_drawings()  # Предположим, метод возвращает список завершенных розыгрышей
     if not drawings:
         await callback_query.message.edit_text(
@@ -161,28 +183,9 @@ async def show_completed_draws(callback_query: CallbackQuery):
 
     await callback_query.message.edit_text(
         "Завершенные розыгрыши:",
-        reply_markup=generate_drawings_list_keyboard(drawings, show_back_button=True)
+        reply_markup=generate_completed_drawings_list_keyboard(drawings, show_back_button=True)
     )
 
-async def show_awaiting_draw(callback_query: CallbackQuery):
-    """Отображает список участников, ожидающих розыгрыша, со статусом 'payment_confirmed'."""
-    drawing_id = int(callback_query.data.split("_")[-1])
-    participants = get_confirmed_participants(drawing_id)  # Получаем список участников с подтвержденной оплатой
-
-    # Формируем ответное сообщение
-    if not participants:
-        response = "Нет участников, ожидающих розыгрыша для этого розыгрыша."
-    else:
-        response = "Участники, ожидающие розыгрыша:\n"
-        for participant in participants:
-            response += f"ID участника: {participant['user_id']}\n"
-
-    # Отправляем сообщение с кнопкой "Назад"
-    await callback_query.message.edit_text(
-        response,
-        reply_markup=create_back_button_keyboard(callback_data=f"back_to_check_menu_{drawing_id}")
-    )
-    await callback_query.answer()
 
 async def approve_screenshot(callback_query: CallbackQuery, bot: Bot, state: FSMContext):
     """Обрабатывает одобрение скриншота и обновляет статус заявки на 'approved'."""
@@ -267,3 +270,206 @@ async def prev_screenshot(callback_query: CallbackQuery, state: FSMContext):
     drawing_id, participant_index = map(int, callback_query.data.split("_")[2:])
     await show_screenshot_review(callback_query, callback_query.bot, state, participant_index - 1)
     await callback_query.answer()
+
+
+async def set_winners_count(query: CallbackQuery):
+    """Устанавливает количество победителей для розыгрыша."""
+    try:
+        # Шаг 1: Выводим исходные данные
+        print(f"Received callback_data: {query.data}")
+
+        # Шаг 2: Разделяем данные
+        parts = query.data.split("_")
+        print(f"Split callback_data: {parts}")
+
+        # Проверяем корректность длины
+        if len(parts) < 4:
+            raise ValueError("Некорректный формат callback_data")
+
+        # Извлекаем данные
+        drawing_id = int(parts[-2])  # Предпоследний элемент — drawing_id
+        count = int(parts[-1])  # Последний элемент — count
+        print(f"Parsed drawing_id: {drawing_id}, count: {count}")
+
+        # Шаг 3: Обновляем количество победителей в БД
+        set_winners_count_in_db(drawing_id, count)
+        print(f"Winners count set to: {count} for drawing_id: {drawing_id}")
+
+        # Шаг 4: Отвечаем и обновляем интерфейс
+        await query.answer(f"Количество победителей установлено: {count}.")
+
+        # 🚀 **Передаём drawing_id напрямую, чтобы избежать ошибки!**
+        await show_drawing_summary(query, None, drawing_id=drawing_id)
+
+    except ValueError as e:
+        print(f"ValueError: {e}")
+        await query.answer(f"Ошибка данных: {e}. Попробуйте снова.", show_alert=True)
+
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        await query.answer(f"Произошла непредвиденная ошибка: {e}.", show_alert=True)
+
+
+async def select_winners(callback_query: CallbackQuery, bot: Bot, state: FSMContext, participant_index: int = 0):
+    """Начинает процесс выбора победителей."""
+    await state.update_data(previous_menu="drawing_info")
+
+    # Получаем ID розыгрыша
+    drawing_id = int(callback_query.data.split("_")[-1])
+
+    # ✅ Добавляем дебаг-лог для проверки списка участников
+    participants = get_participants_by_status(drawing_id, status="payment_confirmed")
+    print(f"DEBUG: Participants (drawing {drawing_id}): {participants}")
+
+    winners = get_winners(drawing_id)
+    total_participants = len(participants)
+    winner_count = get_winners_count(drawing_id)
+
+    print(f'Всего участников: {total_participants}, Нужно выбрать: {winner_count}, Уже выбрано: {len(winners)}')
+
+    # ✅ Если `get_participants_by_status()` снова вернул пустой список — отправляем сообщение и останавливаемся
+    if total_participants == 0:
+        await bot.send_message(
+            chat_id=callback_query.message.chat.id,
+            text="⚠️ Ошибка: Не удалось загрузить участников. Повторите попытку.",
+        )
+        return
+
+    # Проверяем, выбрано ли нужное количество победителей
+    if len(winners) == winner_count:
+        await bot.send_message(
+            chat_id=callback_query.message.chat.id,
+            text="✅ Все победители выбраны! Завершите розыгрыш.",
+            reply_markup=generate_complete_drawing_keyboard(drawing_id)
+        )
+        return
+
+    # Проверяем корректность participant_index
+    if participant_index < 0 or participant_index >= total_participants:
+        participant_index = 0
+
+    # Получаем текущего участника
+    participant = participants[participant_index]
+    print(f'{participant_index=}')
+    print(f'{participant=}')
+    user_id = participant["user_id"]
+    telegram_id = participant["telegram_id"]
+    photo_path = os.path.abspath(f"images/application/{telegram_id}_{drawing_id}.jpg")
+
+    # ✅ Удаляем старое сообщение перед отправкой нового (Только если есть участники)
+    try:
+        await callback_query.message.delete()
+    except TelegramBadRequest:
+        print("⚠️ Ошибка: Сообщение уже удалено.")
+
+    # ✅ Отправляем новое сообщение с фото
+    photo = FSInputFile(photo_path) if os.path.exists(photo_path) else None
+    message_text = (
+            f"🎯 **Выбор победителей**\n\n"
+            f"📌 Участник {participant_index + 1} из {total_participants}\n"
+            f"👤 Telegram ID: [{telegram_id}](tg://user?id={telegram_id})\n\n"
+            "🏆 **Победители:**\n" +
+            "\n".join(
+                [f"{i + 1}. [{w['telegram_id']}](tg://user?id={w['telegram_id']})" for i, w in enumerate(winners)])
+    )
+
+    if photo:
+        await bot.send_photo(
+            chat_id=callback_query.message.chat.id,
+            photo=photo,
+            caption=message_text,
+            parse_mode="Markdown",
+            reply_markup=generate_winner_selection_keyboard(drawing_id, participant_index, total_participants, user_id)
+        )
+    else:
+        await bot.send_message(
+            chat_id=callback_query.message.chat.id,
+            text=f"⚠️ Фото участника отсутствует.\n\n{message_text}",
+            parse_mode="Markdown",
+            reply_markup=generate_winner_selection_keyboard(drawing_id, participant_index, total_participants, user_id)
+        )
+
+    await callback_query.answer()
+
+
+async def next_participant(query: CallbackQuery, state: FSMContext):
+    """Переход к следующему участнику."""
+    print(f"Received callback_data (next): {query.data}")
+
+    parts = query.data.split("_")
+    if len(parts) < 4:
+        print("❌ Ошибка: Некорректный формат callback_data")
+        await query.answer("Ошибка: Некорректные данные.", show_alert=True)
+        return
+
+    _, _, participant_index, drawing_id = parts
+    drawing_id = int(drawing_id)
+    participant_index = int(participant_index) + 1  # Увеличиваем индекс
+    print(f'{participant_index=}')
+
+    await select_winners(query, query.message.bot, state, participant_index)
+
+
+async def prev_participant(query: CallbackQuery, state: FSMContext):
+    """Переход к предыдущему участнику."""
+    print(f"Received callback_data (prev): {query.data}")
+
+    parts = query.data.split("_")
+    if len(parts) < 4:
+        print("❌ Ошибка: Некорректный формат callback_data")
+        await query.answer("Ошибка: Некорректные данные.", show_alert=True)
+        return
+
+    _, _, participant_index, drawing_id = parts
+    drawing_id = int(drawing_id)
+    participant_index = int(participant_index) - 1  # Уменьшаем индекс
+
+    await select_winners(query, query.message.bot, state, participant_index)
+
+
+async def set_winner(query: CallbackQuery, bot: Bot, state: FSMContext):
+    """Делает текущего участника победителем."""
+
+    print(f"Received callback_data: {query.data}")  # Отладка
+
+    parts = query.data.split("_")
+    print(f"Split callback_data: {parts}")
+
+    if len(parts) < 4:
+        print("Ошибка: Недостаточно данных в callback_data")
+        await query.answer("Ошибка обработки запроса.", show_alert=True)
+        return
+
+    _, _, user_id, drawing_id = parts
+    drawing_id = int(drawing_id)
+    user_id = int(user_id)  # Теперь работаем с user_id
+
+    # Получаем участника по user_id
+    participants = get_participants_by_status(drawing_id, status="payment_confirmed")
+    participant = next((p for p in participants if p["user_id"] == user_id), None)
+
+    if not participant:
+        print(f"❌ Ошибка: Не найден участник с user_id={user_id}")
+        await query.answer("Ошибка: участник не найден.", show_alert=True)
+        return
+
+    try:
+        # Добавляем победителя в БД
+        add_winner(drawing_id, participant)
+        await query.answer("✅ Участник добавлен в победители.")
+    except ValueError as e:
+        print(f"Ошибка: {e}")
+        await query.answer(f"⚠️ {e}", show_alert=True)
+
+    # Переход к следующему шагу выбора победителей
+    await select_winners(query, bot, state)
+
+
+async def complete_drawing(query: CallbackQuery):
+    """Завершает розыгрыш."""
+    drawing_id = int(query.data.split("_")[-1])
+
+    # Обновляем статус розыгрыша
+    set_drawing_status(drawing_id, "completed")
+
+    await query.message.edit_text("Розыгрыш успешно завершен!")

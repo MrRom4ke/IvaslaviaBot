@@ -92,32 +92,46 @@ def user_participates_in_drawing(telegram_id, drawing_id):
     conn.close()
     return result is not None  # Возвращает True, если заявка найдена
 
-#TODO Отрефакторит методы получения пользователь с заявками и оплатами, оставить 2 лучших метода
-def get_applications_awaiting_review(drawing_id):
-    """Возвращает заявки, ожидающие проверки скриншотов для указанного розыгрыша."""
+
+def get_participants_by_status(drawing_id, status=None):
+    """
+    Возвращает список участников для указанного розыгрыша с заданным статусом.
+    Если статус не указан, возвращаются все участники.
+
+    :param drawing_id: ID розыгрыша
+    :param status: Фильтр по статусу (например, 'payment_confirmed')
+    :return: Список участников
+    """
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("""
-        SELECT * FROM Applications 
-        WHERE drawing_id = ? AND status = 'pending'
-    """, (drawing_id,))
-    applications = cursor.fetchall()
-    conn.close()
-    return [dict(app) for app in applications] if applications else []
 
-#TODO Отрефакторит методы получения пользователь с заявками и оплатами, оставить 2 лучших метода
-def get_applications_awaiting_payment(drawing_id):
-    """Возвращает заявки, ожидающие проверки оплаты для указанного розыгрыша."""
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT * FROM Applications 
-        WHERE drawing_id = ? AND status = 'payment_pending'
-    """, (drawing_id,))
-    applications = cursor.fetchall()
-    conn.close()
-    return [dict(app) for app in applications] if applications else []
+    query = """
+    SELECT a.application_id, a.user_id, u.telegram_id, a.status
+    FROM Applications a
+    JOIN Users u ON a.user_id = u.user_id
+    WHERE a.drawing_id = ?
+    """
+    params = [drawing_id]
 
+    if status:
+        query += " AND a.status = ?"
+        params.append(status)
+
+    cursor.execute(query, params)
+    participants = cursor.fetchall()
+    conn.close()
+
+    return [
+        {
+            "application_id": row[0],
+            "user_id": row[1],
+            "telegram_id": row[2],
+            "status": row[3],
+        }
+        for row in participants
+    ]
+
+#TODO Отрефакторить вызовы, удалить реализацию этого метода
 def get_pending_participants(drawing_id):
     """
     Возвращает список участников, ожидающих проверки скриншотов для заданного розыгрыша.
@@ -145,6 +159,7 @@ def get_pending_participants(drawing_id):
         for row in participants
     ]
 
+#TODO Отрефакторить вызовы, удалить реализацию этого метода
 def get_payment_pending_participants(drawing_id):
     """
     Возвращает список участников ожидающих проверки оплаты для заданного розыгрыша.
@@ -172,6 +187,7 @@ def get_payment_pending_participants(drawing_id):
         for row in participants
     ]
 
+#TODO Отрефакторить вызовы, удалить реализацию этого метода
 def get_confirmed_participants(drawing_id):
     """Возвращает список участников со статусом 'payment_confirmed' для указанного розыгрыша."""
     conn = get_connection()

@@ -7,16 +7,17 @@ from aiogram import F
 from aiogram.filters import Command
 
 from IvaslaviaBot.core.handlers.application_handlers import handle_screenshot, show_screenshot_review, \
-    show_payment_review, handle_payment_screen
-from IvaslaviaBot.core.handlers.drawing_handlers import view_drawing_info, participate_in_drawing, \
-    show_drawing_info
+    show_payment_review, handle_payment_screen, approve_payment, reject_payment, next_payment, prev_payment
+from IvaslaviaBot.core.handlers.drawing_handlers import view_drawing_info, show_drawing_info, continue_drawing, \
+    handle_end_draw_callback, show_drawing_summary, show_drawing_winners
 from IvaslaviaBot.core.utils.menu_utils import back_to_previous_menu
 from IvaslaviaBot.core.utils.stateform import NewDrawingState, ApplicationForm
 from config import TOKEN
 from core.handlers.basic import cmd_start
 from core.handlers.admin_handlers import cmd_admin, handle_admin_callback, set_drawing_title, set_drawing_description, \
     set_drawing_start_date, set_drawing_end_date, show_active_draws, show_completed_draws, \
-    cancel_creation, show_awaiting_draw, approve_screenshot, reject_screenshot, next_screenshot, prev_screenshot
+    cancel_creation, approve_screenshot, reject_screenshot, next_screenshot, prev_screenshot, set_winners_count, \
+    select_winners, next_participant, prev_participant, set_winner, complete_drawing
 from core.handlers.callback import call_operator_callback, inline_handler
 from core.utils.commands import set_commands
 from core.db.models import initialize_tables
@@ -71,16 +72,16 @@ dp.callback_query.register(inline_handler, lambda c: c.data and c.data in ['part
 dp.callback_query.register(call_operator_callback, lambda c: c.data == 'call_operator')
 
 # Колбэки кнопок админ меню
-dp.callback_query.register(handle_admin_callback, lambda c: c.data in ['start_draw', 'manage_draw', 'end_draw'])
+dp.callback_query.register(handle_admin_callback, lambda c: c.data in ['start_draw', 'manage_draw'])
 
 
 dp.callback_query.register(view_drawing_info, lambda c: c.data.startswith("view_drawing_"))
-dp.callback_query.register(participate_in_drawing, lambda c: c.data.startswith("participate_"))
+dp.callback_query.register(continue_drawing, lambda c: c.data.startswith("continue_drawing_"))
+
 
 dp.callback_query.register(show_active_draws, lambda c: c.data == "active_draws")
 dp.callback_query.register(show_completed_draws, lambda c: c.data == "completed_draws")
 dp.callback_query.register(show_drawing_info, lambda c: c.data.startswith("manage_drawing_"))
-dp.callback_query.register(show_awaiting_draw, lambda c: c.data.startswith("awaiting_draw_"))
 
 dp.callback_query.register(show_screenshot_review, lambda c: c.data.startswith("check_screenshots_"))
 dp.callback_query.register(approve_screenshot, lambda c: c.data.startswith("approve_screenshot_"))
@@ -89,6 +90,21 @@ dp.callback_query.register(next_screenshot, lambda c: c.data.startswith("next_sc
 dp.callback_query.register(prev_screenshot, lambda c: c.data.startswith("prev_screenshot_"))
 
 dp.callback_query.register(show_payment_review, lambda c: c.data.startswith("check_payments_"))
+dp.callback_query.register(approve_payment, lambda c: c.data.startswith("approve_payment_"))
+dp.callback_query.register(reject_payment, lambda c: c.data.startswith("reject_payment_"))
+dp.callback_query.register(next_payment, lambda c: c.data.startswith("next_payment_"))
+dp.callback_query.register(prev_payment, lambda c: c.data.startswith("prev_payment_"))
+
+dp.callback_query.register(handle_end_draw_callback, lambda c: c.data == "end_draw")
+dp.callback_query.register(show_drawing_summary, lambda c: c.data.startswith("end_drawing_"))
+dp.callback_query.register(set_winners_count, lambda c: c.data.startswith("set_winners_count_"))
+dp.callback_query.register(select_winners, lambda c: c.data.startswith("select_winners_"))
+dp.callback_query.register(next_participant, lambda c: c.data.startswith("next_participant_"))
+dp.callback_query.register(prev_participant, lambda c: c.data.startswith("prev_participant_"))
+dp.callback_query.register(set_winner, lambda c: c.data.startswith("set_winner_"))
+dp.callback_query.register(complete_drawing, lambda c: c.data.startswith("complete_drawing_"))
+dp.callback_query.register(show_drawing_winners, lambda  c: c.data.startswith("completed_drawing_"))
+
 
 
 

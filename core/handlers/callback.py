@@ -3,7 +3,7 @@ from aiogram.types import CallbackQuery
 from aiogram.fsm.context import FSMContext
 
 from IvaslaviaBot.config import ADMIN_ID
-from IvaslaviaBot.core.db.drawings_crud import get_upcoming_and_active_drawings
+from IvaslaviaBot.core.db.drawings_crud import get_drawings_by_status
 from IvaslaviaBot.core.keyboards.drawing_inline import generate_drawings_keyboard
 from IvaslaviaBot.core.utils.menu_utils import update_or_send_callback_message
 
@@ -17,9 +17,9 @@ async def inline_handler(callback_query: CallbackQuery, state: FSMContext):
     await state.update_data(previous_menu="start_menu")
 
     # Получаем список активных и предстоящих розыгрышей
-    drawings = get_upcoming_and_active_drawings()
+    drawings = get_drawings_by_status(['active'])
     if not drawings:
-        await callback_query.message.answer("На данный момент нет активных или предстоящих розыгрышей.")
+        await callback_query.message.answer("На данный момент нет активных розыгрышей.")
         return
     # Отправляем инлайн-клавиатуру с розыгрышами
     await update_or_send_callback_message(

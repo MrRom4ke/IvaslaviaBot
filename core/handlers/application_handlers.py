@@ -3,9 +3,9 @@ from aiogram.fsm.context import FSMContext
 from aiogram import Bot
 import os
 
-from IvaslaviaBot.core.db.applications_crud import get_applications_awaiting_review, get_pending_participants, \
+from IvaslaviaBot.core.db.applications_crud import get_pending_participants, \
     get_payment_pending_participants, update_application_status, get_application_by_user_and_drawing, create_application
-from IvaslaviaBot.core.keyboards.admin_inline import create_screenshot_review_keyboard
+from IvaslaviaBot.core.keyboards.admin_inline import create_screenshot_review_keyboard, create_payment_review_keyboard
 from IvaslaviaBot.core.keyboards.app_inline import create_back_only_keyboard
 from IvaslaviaBot.core.utils.menu_utils import update_or_send_callback_message
 
@@ -53,7 +53,6 @@ async def handle_screenshot(message: Message, state: FSMContext, bot: Bot):
     # Отправляем сообщение об успешной загрузке
     await message.answer("Ваш скриншот был успешно сохранен и ожидает проверки.")
     await state.clear()  # Завершаем состояние после обработки
-
 
 
 async def show_screenshot_review(callback_query: CallbackQuery, bot: Bot, state: FSMContext, participant_index: int = 0):
@@ -111,7 +110,7 @@ async def show_screenshot_review(callback_query: CallbackQuery, bot: Bot, state:
 
 
 async def handle_payment_screen(message: Message, state: FSMContext, bot: Bot):
-    """Обрабатывает скриншот пользователя и сохраняет его в папку."""
+    """Обрабатывает скриншот оплаты пользователя и сохраняет его в папку."""
     # Проверяем, что сообщение содержит изображение
     if not message.photo:
         await message.answer("Пожалуйста, отправьте одно изображение.")
@@ -142,36 +141,114 @@ async def handle_payment_screen(message: Message, state: FSMContext, bot: Bot):
     # Отправляем сообщение об успешной загрузке
     await message.answer("Ваш скриншот оплаты был успешно сохранен и ожидает проверки.")
 
+    # Обновляем статус заявки
+    application = get_application_by_user_and_drawing(message.from_user.id, drawing_id)
+    if application and application["status"] == "payment_pending":
+        update_application_status(application["application_id"], status="payment_pending")
+
     await state.clear()  # Завершаем состояние после обработки
 
-async def show_payment_review(callback_query: CallbackQuery, bot: Bot, participant_index: int = 0):
-    """Показывает скриншот участника и предоставляет кнопки для управления."""
-    drawing_id = int(callback_query.data.split("_")[2])  # Получаем ID розыгрыша
+
+async def show_payment_review(callback_query: CallbackQuery, bot: Bot, state: FSMContext, participant_index: int = 0):
+    """Показывает скриншот оплаты участника и предоставляет кнопки для управления."""
+    await state.update_data(previous_menu="drawing_info")
+
+    # Получаем ID розыгрыша и участников
+    drawing_id = int(callback_query.data.split("_")[2])
     participants = get_payment_pending_participants(drawing_id)
     total_participants = len(participants)
 
+    # Если нет участников
     if not participants:
-        await callback_query.message.answer("Нет участников, ожидающих проверки скриншотов.")
+        await update_or_send_callback_message(
+            callback_query=callback_query,
+            text="Нет участников, ожидающих проверки оплаты.",
+            reply_markup=create_back_only_keyboard(drawing_id)
+        )
+        await callback_query.answer()
         return
 
+    # Если текущий индекс выходит за границы, отображаем первого участника
+    if participant_index < 0 or participant_index >= total_participants:
+        participant_index = 0
+
+    # Получаем текущего участника
     participant = participants[participant_index]
     telegram_id = participant['telegram_id']
     photo_path = os.path.abspath(f"images/payment/{telegram_id}_{drawing_id}.jpg")
 
-    # Проверка существования файла
+    # Проверяем существование файла
     if not os.path.exists(photo_path):
         await callback_query.message.edit_text(
-            f"Оплата участника {participant_index + 1} отсутствует. Пожалуйста, проверьте данные.",
+            f"Скриншот оплаты для участника {participant_index + 1} отсутствует. Пожалуйста, проверьте данные.",
             reply_markup=create_back_only_keyboard(drawing_id)
         )
+        await callback_query.answer()
         return
 
+    # Отправляем скриншот и кнопки управления
     photo = FSInputFile(photo_path)
-
     await callback_query.message.delete()
     await bot.send_photo(
         chat_id=callback_query.message.chat.id,
         photo=photo,
-        caption=f"Оплата участника {participant_index + 1} из {total_participants}",
-        reply_markup=create_screenshot_review_keyboard(drawing_id, participant_index, total_participants)
+        caption=(
+            f"Участник {participant_index + 1} из {total_participants}:\n"
+            f"Telegram ID: [{telegram_id}](tg://user?id={telegram_id})\n"
+        ),
+        parse_mode="Markdown",
+        reply_markup=create_payment_review_keyboard(drawing_id, participant_index, total_participants)
     )
+    await callback_query.answer()
+
+async def approve_payment(callback_query: CallbackQuery, bot: Bot, state: FSMContext):
+    """Обрабатывает одобрение оплаты и обновляет статус заявки на 'payment_confirmed'."""
+    drawing_id, participant_index = map(int, callback_query.data.split("_")[2:])
+    participants = get_payment_pending_participants(drawing_id)
+
+    if not participants:
+        await callback_query.answer("Нет участников для проверки оплаты.", show_alert=True)
+        return
+
+    participant = participants[participant_index]
+    update_application_status(participant['application_id'], status="payment_confirmed")
+    await bot.send_message(
+        chat_id=participant['telegram_id'],
+        text="Ваша оплата подтверждена. Спасибо за участие! Ожидайте завершения розыгрыша."
+    )
+
+    # Переходим к следующему участнику или обновляем текущего
+    await show_payment_review(callback_query, bot, state, participant_index)
+    await callback_query.answer()
+
+async def reject_payment(callback_query: CallbackQuery, bot: Bot, state: FSMContext):
+    """Обрабатывает отклонение оплаты и обновляет статус заявки на 'payment_reject'."""
+    drawing_id, participant_index = map(int, callback_query.data.split("_")[2:])
+    participants = get_payment_pending_participants(drawing_id)
+
+    if not participants:
+        await callback_query.answer("Нет участников для проверки оплаты.", show_alert=True)
+        return
+
+    participant = participants[participant_index]
+    update_application_status(participant['application_id'], status="payment_reject")
+    await bot.send_message(
+        chat_id=participant['telegram_id'],
+        text="Ваша оплата была отклонена. Пожалуйста, свяжитесь с организатором для уточнения причин."
+    )
+
+    # Переходим к следующему участнику или обновляем текущего
+    await show_payment_review(callback_query, bot, state, participant_index)
+    await callback_query.answer()
+
+async def next_payment(callback_query: CallbackQuery, bot: Bot, state: FSMContext):
+    """Переход к следующему скриншоту оплаты участника."""
+    drawing_id, participant_index = map(int, callback_query.data.split("_")[2:])
+    await show_payment_review(callback_query, bot, state, participant_index + 1)
+    await callback_query.answer()
+
+async def prev_payment(callback_query: CallbackQuery, bot: Bot, state: FSMContext):
+    """Переход к предыдущему скриншоту оплаты участника."""
+    drawing_id, participant_index = map(int, callback_query.data.split("_")[2:])
+    await show_payment_review(callback_query, bot, state, participant_index - 1)
+    await callback_query.answer()
