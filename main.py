@@ -74,10 +74,8 @@ dp.callback_query.register(call_operator_callback, lambda c: c.data == 'call_ope
 # Колбэки кнопок админ меню
 dp.callback_query.register(handle_admin_callback, lambda c: c.data in ['start_draw', 'manage_draw'])
 
-
 dp.callback_query.register(view_drawing_info, lambda c: c.data.startswith("view_drawing_"))
 dp.callback_query.register(continue_drawing, lambda c: c.data.startswith("continue_drawing_"))
-
 
 dp.callback_query.register(show_active_draws, lambda c: c.data == "active_draws")
 dp.callback_query.register(show_completed_draws, lambda c: c.data == "completed_draws")
@@ -104,8 +102,7 @@ dp.callback_query.register(prev_participant, lambda c: c.data.startswith("prev_p
 dp.callback_query.register(set_winner, lambda c: c.data.startswith("set_winner_"))
 dp.callback_query.register(complete_drawing, lambda c: c.data.startswith("complete_drawing_"))
 dp.callback_query.register(show_drawing_winners, lambda  c: c.data.startswith("completed_drawing_"))
-
-
+dp.callback_query.register(complete_drawing, F.data.startswith("cancel_drawing_"))
 
 
 if __name__ == '__main__':

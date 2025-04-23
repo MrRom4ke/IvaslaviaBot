@@ -16,10 +16,11 @@ def generate_drawings_keyboard(drawings):
     builder.row(InlineKeyboardButton(text='⬅️Назад', callback_data='back_to_previous_menu'))
     return builder.as_markup()
 
-def create_drawing_info_buttons(drawing_id):
+def create_drawing_info_buttons(drawing_id, btn_name):
     """Создает кнопки для управления розыгрышем: 'Принять участие' и 'Вернуться'."""
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="❇️ Принять участие", callback_data=f"continue_drawing_{drawing_id}"))
+    if btn_name:
+        builder.row(InlineKeyboardButton(text=btn_name, callback_data=f"continue_drawing_{drawing_id}"))
     builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_previous_menu"))
     return builder.as_markup()
 
@@ -129,4 +130,12 @@ def generate_completed_drawings_list_keyboard(drawings, show_back_button=True):
     if show_back_button:
         builder.row(InlineKeyboardButton(text="⬅️Назад", callback_data="manage_draw"))
 
+    return builder.as_markup()
+
+def generate_cancel_drawing_keyboard(drawing_id: int):
+    """Создает клавиатуру для аннулирования розыгрыша."""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="❌ Отменить розыгрыш", callback_data=f"cancel_drawing_{drawing_id}")
+    )
     return builder.as_markup()

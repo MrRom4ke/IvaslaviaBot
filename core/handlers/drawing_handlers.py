@@ -51,26 +51,37 @@ async def view_drawing_info(callback_query: CallbackQuery, state: FSMContext):
         attempts = application.get("attempts", 0)
 
         if status == "pending":
-            info_message += "🔵 Статус вашей заявки: Ожидает проверки скриншота.\n"
+            await callback_query.message.edit_text(
+                "🔵 Статус вашей заявки: Ожидает проверки скриншота.\n",
+                reply_markup=create_drawing_info_buttons(drawing_id, None))
         elif status == "approved":
-            info_message += "✅ Статус вашей заявки: Скриншот одобрен. Ожидается оплата.\n"
+            await callback_query.message.edit_text(
+                "✅ Статус вашей заявки: Скриншот одобрен. Ожидаем оплату.\n",
+                reply_markup=create_drawing_info_buttons(drawing_id, None))
         elif status == "rejected":
-            info_message += (
-                f"❌ Статус вашей заявки: Скриншот отклонён.\n"
-                f"У вас осталось попыток: {3 - attempts}.\n"
-                "Вы можете загрузить новый скриншот."
-            )
+            await callback_query.message.edit_text(
+                "f❌ Статус вашей заявки: Скриншот отклонён.\nУ вас осталось попыток: {3 - attempts}.\nВы можете загрузить новый скриншот.",
+                reply_markup=create_drawing_info_buttons(drawing_id, "🆕 Загрузить новый скриншот"))
         elif status == "payment_pending":
-            info_message += "💳 Статус вашей заявки: Ожидает проверки оплаты.\n"
+            await callback_query.message.edit_text(
+                "💳 Статус вашей заявки: Ожидается оплата по реквизитам\nРЕКВИЗИТЫ:\n1234 5678 8901 2345",
+                reply_markup=create_drawing_info_buttons(drawing_id, "🧾 Загрузить чек об оплате"))
+        elif status == 'payment_bill_loaded':
+            await callback_query.message.edit_text(
+                "💳 Статус вашей заявки: Чек об оплате на проверке\n",
+                reply_markup=create_drawing_info_buttons(drawing_id, None))
         elif status == "payment_confirmed":
-            info_message += "✅ Статус вашей заявки: Оплата подтверждена.\n"
+            await callback_query.message.edit_text(
+                "✅ Статус вашей заявки: Оплата подтверждена.\n",
+                reply_markup=create_drawing_info_buttons(drawing_id, None))
         elif status == "payment_reject":
-            info_message += "❌ Статус вашей заявки: Оплата отклонена. Вы можете загрузить новый скриншот оплаты."
+            await callback_query.message.edit_text(
+                "❌ Статус вашей заявки: Оплата отклонена. Вы можете загрузить новый скриншот оплаты.",
+                reply_markup=create_drawing_info_buttons(drawing_id, "🧾 Загрузить новый чек об оплате"))
     else:
-        info_message += "🔘 У вас нет активной заявки на участие в этом розыгрыше.\n"
-
-    # Отправляем сообщение с информацией
-    await callback_query.message.edit_text(info_message, reply_markup=create_drawing_info_buttons(drawing_id))
+        await callback_query.message.edit_text(
+            "🔘 У вас нет активной заявки на участие в этом розыгрыше.\n",
+            reply_markup=create_drawing_info_buttons(drawing_id, "❇️ Принять участие"))
 
 
 async def continue_drawing(callback_query: CallbackQuery, state: FSMContext):
@@ -99,11 +110,17 @@ async def continue_drawing(callback_query: CallbackQuery, state: FSMContext):
         elif status == "payment_pending":
             # Пользователь должен загрузить скриншот оплаты
             await callback_query.message.edit_text(
-                "Ваша заявка одобрена. Пожалуйста, оплатите участие по следующим реквизитам:\n"
-                "[Ваши реквизиты]\nПосле оплаты, пришлите скриншот об оплате."
+                "Загрузите чек об оплате"
             )
             await state.update_data(selected_drawing_id=drawing_id)
             await state.set_state(ApplicationForm.WAITING_FOR_PAYMENT_SCREEN)
+        elif status == "payment_bill_loaded":
+            # Пользователь загрузил скриншот оплаты
+            await callback_query.message.edit_text(
+                "Ваш чек об оплате загружен и ожидает проверки"
+            )
+            await state.update_data(selected_drawing_id=drawing_id)
+            await state.clear()
         elif status == "payment_confirmed":
             # Оплата подтверждена
             await callback_query.message.edit_text(
@@ -264,7 +281,7 @@ async def show_drawing_winners(query: CallbackQuery):
 
     # Формируем список победителей
     winners_list = "\n".join([
-        f"{i + 1}. [{w['telegram_id']}](tg://user?id={w['telegram_id']})"
+        f"{i + 1}. [{w['telegram_alias']}](https://t.me/{w['telegram_alias']})"
         for i, w in enumerate(winners)
     ])
 

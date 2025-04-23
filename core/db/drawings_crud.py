@@ -167,7 +167,7 @@ def get_winners(drawing_id):
 
     # Получаем победителей, включая информацию о пользователях
     cursor.execute("""
-        SELECT w.winner_id, w.drawing_id, w.user_id, u.telegram_id
+        SELECT w.winner_id, w.drawing_id, w.user_id, u.telegram_id, u.contact_info
         FROM Winners w
         JOIN Users u ON w.user_id = u.user_id
         WHERE w.drawing_id = ?
@@ -182,7 +182,8 @@ def get_winners(drawing_id):
             "winner_id": row[0],
             "drawing_id": row[1],
             "user_id": row[2],
-            "telegram_id": row[3]
+            "telegram_id": row[3],
+            'telegram_alias': row[4],
         }
         for row in winners
     ]

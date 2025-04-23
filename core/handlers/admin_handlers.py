@@ -18,7 +18,7 @@ from IvaslaviaBot.core.keyboards.admin_inline import generate_admin_menu_keyboar
     generate_winner_selection_keyboard
 from IvaslaviaBot.core.keyboards.app_inline import create_back_only_keyboard
 from IvaslaviaBot.core.keyboards.drawing_inline import generate_drawings_list_keyboard, generate_drawings_keyboard, \
-    generate_complete_drawing_keyboard, generate_completed_drawings_list_keyboard
+    generate_complete_drawing_keyboard, generate_completed_drawings_list_keyboard, generate_cancel_drawing_keyboard
 from IvaslaviaBot.core.utils.menu_utils import update_or_send_message, update_or_send_callback_message
 from IvaslaviaBot.core.utils.stateform import ApplicationForm, NewDrawingState
 from IvaslaviaBot.core.keyboards.inline import admin_keyboard
@@ -192,8 +192,7 @@ async def approve_screenshot(callback_query: CallbackQuery, bot: Bot, state: FSM
     drawing_id, participant_index = map(int, callback_query.data.split("_")[2:])
     participant = get_pending_participants(drawing_id)[participant_index]
     update_application_status(participant['application_id'], status="payment_pending")
-    payment_details = "Пожалуйста, оплатите участие по следующим реквизитам:\n[Ваши реквизиты]"
-    await bot.send_message(participant['telegram_id'], "Ваша заявка одобрена. " + payment_details + '\nПосле оплаты, пришлите скриншот об оплате')
+    await bot.send_message(participant['telegram_id'], "Ваша заявка одобрена.\nОплата розыгрыша в меню /start")
     await state.update_data(selected_drawing_id=drawing_id)
     await state.set_state(ApplicationForm.WAITING_FOR_PAYMENT_SCREEN)
     await show_screenshot_review(callback_query, callback_query.bot, state, participant_index)
@@ -331,7 +330,8 @@ async def select_winners(callback_query: CallbackQuery, bot: Bot, state: FSMCont
     if total_participants == 0:
         await bot.send_message(
             chat_id=callback_query.message.chat.id,
-            text="⚠️ Ошибка: Не удалось загрузить участников. Повторите попытку.",
+            text="⚠️ В конкурсе нет участников, отмените розыгрыш:",
+            reply_markup=generate_cancel_drawing_keyboard(drawing_id),
         )
         return
 
@@ -463,7 +463,6 @@ async def set_winner(query: CallbackQuery, bot: Bot, state: FSMContext):
 
     # Переход к следующему шагу выбора победителей
     await select_winners(query, bot, state)
-
 
 async def complete_drawing(query: CallbackQuery):
     """Завершает розыгрыш."""

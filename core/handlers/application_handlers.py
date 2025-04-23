@@ -144,7 +144,7 @@ async def handle_payment_screen(message: Message, state: FSMContext, bot: Bot):
     # Обновляем статус заявки
     application = get_application_by_user_and_drawing(message.from_user.id, drawing_id)
     if application and application["status"] == "payment_pending":
-        update_application_status(application["application_id"], status="payment_pending")
+        update_application_status(application["application_id"], status="payment_bill_loaded")
 
     await state.clear()  # Завершаем состояние после обработки
 
