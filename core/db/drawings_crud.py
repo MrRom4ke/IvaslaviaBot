@@ -70,13 +70,6 @@ def update_drawings_status():
         WHERE status = 'active' AND end_date <= ?
     """, (current_time,))
 
-    # # Обновляем статус на 'completed', если розыгрыш завершен
-    # cursor.execute("""
-    #     UPDATE Drawings
-    #     SET status = 'completed'
-    #     WHERE status = 'ready_to_draw'
-    # """)
-
     # Получаем количество розыгрышей по каждому статусу
     cursor.execute("SELECT COUNT(*) FROM Drawings WHERE status = 'active'")
     active_count = cursor.fetchone()[0]

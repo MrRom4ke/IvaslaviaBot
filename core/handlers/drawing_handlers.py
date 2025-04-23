@@ -24,7 +24,6 @@ async def view_drawing_info(callback_query: CallbackQuery, state: FSMContext):
 
     # Получаем информацию о розыгрыше через метод репозитория
     drawing = get_drawing_by_id(drawing_id)
-    print(drawing)
 
     if not drawing:
         await callback_query.message.edit_text("Информация о выбранном розыгрыше не найдена.")
@@ -56,27 +55,27 @@ async def view_drawing_info(callback_query: CallbackQuery, state: FSMContext):
                 reply_markup=create_drawing_info_buttons(drawing_id, None))
         elif status == "approved":
             await callback_query.message.edit_text(
-                "✅ Статус вашей заявки: Скриншот одобрен. Ожидаем оплату.\n",
+                "✅ Статус вашей заявки: \nСкриншот одобрен. Ожидаем оплату.\n",
                 reply_markup=create_drawing_info_buttons(drawing_id, None))
         elif status == "rejected":
             await callback_query.message.edit_text(
-                "f❌ Статус вашей заявки: Скриншот отклонён.\nУ вас осталось попыток: {3 - attempts}.\nВы можете загрузить новый скриншот.",
+                "f❌ Статус вашей заявки: \nСкриншот отклонён.\nУ вас осталось попыток: {3 - attempts}.\nВы можете загрузить новый скриншот.",
                 reply_markup=create_drawing_info_buttons(drawing_id, "🆕 Загрузить новый скриншот"))
         elif status == "payment_pending":
             await callback_query.message.edit_text(
-                "💳 Статус вашей заявки: Ожидается оплата по реквизитам\nРЕКВИЗИТЫ:\n1234 5678 8901 2345",
+                "💳 Статус вашей заявки: \nОжидается оплата по реквизитам\nРЕКВИЗИТЫ:\n1234 5678 8901 2345",
                 reply_markup=create_drawing_info_buttons(drawing_id, "🧾 Загрузить чек об оплате"))
         elif status == 'payment_bill_loaded':
             await callback_query.message.edit_text(
-                "💳 Статус вашей заявки: Чек об оплате на проверке\n",
+                "💳 Статус вашей заявки: \nЧек об оплате на проверке\n",
                 reply_markup=create_drawing_info_buttons(drawing_id, None))
         elif status == "payment_confirmed":
             await callback_query.message.edit_text(
-                "✅ Статус вашей заявки: Оплата подтверждена.\n",
+                "✅ Статус вашей заявки: \nОплата подтверждена.\nОжидайте завершения розыгрыша.",
                 reply_markup=create_drawing_info_buttons(drawing_id, None))
         elif status == "payment_reject":
             await callback_query.message.edit_text(
-                "❌ Статус вашей заявки: Оплата отклонена. Вы можете загрузить новый скриншот оплаты.",
+                "❌ Статус вашей заявки: \nОплата отклонена. \nВы можете загрузить новый скриншот оплаты.",
                 reply_markup=create_drawing_info_buttons(drawing_id, "🧾 Загрузить новый чек об оплате"))
     else:
         await callback_query.message.edit_text(
@@ -162,6 +161,7 @@ async def show_drawing_info(callback_query: CallbackQuery, state: FSMContext):
     approved = status_counts.get('approved', 0)
     rejected = status_counts.get('rejected', 0)
     payment_pending = status_counts.get('payment_pending', 0)
+    payment_bill_loaded = status_counts.get('payment_bill_loaded', 0)
     payment_confirmed = status_counts.get('payment_confirmed', 0)
     payment_reject = status_counts.get('payment_reject', 0)
 
@@ -183,13 +183,14 @@ async def show_drawing_info(callback_query: CallbackQuery, state: FSMContext):
         f"Дата начала:                  {start_date}\n"
         f"Дата окончания:               {end_date}\n\n"
         f"Общая статистика заявок:\n"
-        f"  Количество участников:      {participants_count}\n"
-        f"  Ожидают проверки:           {pending}\n"
-        f"  Одобрено:                   {total_approved}\n"
-        f"  Отклонено:                  {rejected}\n"
-        f"  Ожидают проверки оплаты:    {payment_pending}\n"
-        f"  Подтверждено оплата:        {payment_confirmed}\n"
-        f"  Оплата отклонена:           {payment_reject}\n"
+        f"  Количество участников:------ {participants_count}\n"
+        f"  Ожидают проверки:----------- {pending}\n"
+        f"  Одобрено:------------------- {total_approved}\n"
+        f"  Отклонено:------------------ {rejected}\n"
+        f"  Ожидаем оплату:------------- {payment_pending}\n"
+        f"  Ожидают проверки оплаты:---- {payment_bill_loaded}\n"
+        f"  Подтверждено оплата:-------- {payment_confirmed}\n"
+        f"  Оплата отклонена:----------- {payment_reject}\n"
         f"```"
     )
 

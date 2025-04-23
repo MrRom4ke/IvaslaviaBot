@@ -3,8 +3,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram import Bot
 import os
 
-from IvaslaviaBot.core.db.applications_crud import get_pending_participants, \
-    get_payment_pending_participants, update_application_status, get_application_by_user_and_drawing, create_application
+from IvaslaviaBot.core.db.applications_crud import update_application_status, get_application_by_user_and_drawing, \
+    create_application, get_participants_by_status
 from IvaslaviaBot.core.keyboards.admin_inline import create_screenshot_review_keyboard, create_payment_review_keyboard
 from IvaslaviaBot.core.keyboards.app_inline import create_back_only_keyboard
 from IvaslaviaBot.core.utils.menu_utils import update_or_send_callback_message
@@ -62,7 +62,7 @@ async def show_screenshot_review(callback_query: CallbackQuery, bot: Bot, state:
 
     # Получаем ID розыгрыша и участников
     drawing_id = int(callback_query.data.split("_")[2])
-    participants = get_pending_participants(drawing_id)
+    participants = get_participants_by_status(drawing_id, 'pending')
     total_participants = len(participants)
 
     # Если нет участников
@@ -155,7 +155,7 @@ async def show_payment_review(callback_query: CallbackQuery, bot: Bot, state: FS
 
     # Получаем ID розыгрыша и участников
     drawing_id = int(callback_query.data.split("_")[2])
-    participants = get_payment_pending_participants(drawing_id)
+    participants = get_participants_by_status(drawing_id, 'payment_bill_loaded')
     total_participants = len(participants)
 
     # Если нет участников
@@ -204,7 +204,7 @@ async def show_payment_review(callback_query: CallbackQuery, bot: Bot, state: FS
 async def approve_payment(callback_query: CallbackQuery, bot: Bot, state: FSMContext):
     """Обрабатывает одобрение оплаты и обновляет статус заявки на 'payment_confirmed'."""
     drawing_id, participant_index = map(int, callback_query.data.split("_")[2:])
-    participants = get_payment_pending_participants(drawing_id)
+    participants = get_participants_by_status(drawing_id, 'payment_bill_loaded')
 
     if not participants:
         await callback_query.answer("Нет участников для проверки оплаты.", show_alert=True)
@@ -224,7 +224,7 @@ async def approve_payment(callback_query: CallbackQuery, bot: Bot, state: FSMCon
 async def reject_payment(callback_query: CallbackQuery, bot: Bot, state: FSMContext):
     """Обрабатывает отклонение оплаты и обновляет статус заявки на 'payment_reject'."""
     drawing_id, participant_index = map(int, callback_query.data.split("_")[2:])
-    participants = get_payment_pending_participants(drawing_id)
+    participants = get_participants_by_status(drawing_id, 'payment_bill_loaded')
 
     if not participants:
         await callback_query.answer("Нет участников для проверки оплаты.", show_alert=True)

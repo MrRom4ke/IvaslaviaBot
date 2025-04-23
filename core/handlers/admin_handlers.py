@@ -6,7 +6,7 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery, FSInputFile
 
-from IvaslaviaBot.core.db.applications_crud import update_application_status, get_pending_participants, \
+from IvaslaviaBot.core.db.applications_crud import update_application_status, \
     increase_attempts, delete_application, get_application_by_user_and_drawing, get_participants_by_status
 from IvaslaviaBot.core.db.drawings_crud import create_new_drawing, update_drawings_status, \
     get_completed_drawings, get_drawings_by_status, set_winners_count_in_db, get_winners, get_winners_count, \
@@ -169,7 +169,6 @@ async def show_active_draws(callback_query: CallbackQuery, state: FSMContext):
         reply_markup=generate_drawings_list_keyboard(drawings, show_back_button=True)
     )
 
-#TODO Доделать функционал
 async def show_completed_draws(callback_query: CallbackQuery):
     """Отображает список завершенных розыгрышей."""
     print("Отображение всех завершенных розыгрышей")
@@ -190,7 +189,7 @@ async def show_completed_draws(callback_query: CallbackQuery):
 async def approve_screenshot(callback_query: CallbackQuery, bot: Bot, state: FSMContext):
     """Обрабатывает одобрение скриншота и обновляет статус заявки на 'approved'."""
     drawing_id, participant_index = map(int, callback_query.data.split("_")[2:])
-    participant = get_pending_participants(drawing_id)[participant_index]
+    participant = get_participants_by_status(drawing_id, 'pending')[participant_index]
     update_application_status(participant['application_id'], status="payment_pending")
     await bot.send_message(participant['telegram_id'], "Ваша заявка одобрена.\nОплата розыгрыша в меню /start")
     await state.update_data(selected_drawing_id=drawing_id)
@@ -201,7 +200,7 @@ async def approve_screenshot(callback_query: CallbackQuery, bot: Bot, state: FSM
 async def reject_screenshot(callback_query: CallbackQuery, state: FSMContext):
     """Обрабатывает отклонение скриншота и обновляет статус заявки на 'rejected'."""
     drawing_id, participant_index = map(int, callback_query.data.split("_")[2:])
-    participants = get_pending_participants(drawing_id)
+    participants = get_participants_by_status(drawing_id, 'pending')
 
     if not participants:
         await callback_query.answer("Нет участников для проверки.", show_alert=True)
@@ -233,7 +232,7 @@ async def reject_screenshot(callback_query: CallbackQuery, state: FSMContext):
         )
 
         # Проверяем, есть ли еще участники
-        remaining_participants = get_pending_participants(drawing_id)
+        remaining_participants = get_participants_by_status(drawing_id, 'pending')
         if remaining_participants:
             await show_screenshot_review(callback_query, callback_query.bot, state, 0)
         else:
