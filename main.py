@@ -6,12 +6,12 @@ from aiogram import Bot, Dispatcher
 from aiogram import F
 from aiogram.filters import Command
 
-from IvaslaviaBot.core.handlers.application_handlers import handle_screenshot, show_screenshot_review, \
+from core.handlers.application_handlers import handle_screenshot, show_screenshot_review, \
     show_payment_review, handle_payment_screen, approve_payment, reject_payment, next_payment, prev_payment
-from IvaslaviaBot.core.handlers.drawing_handlers import view_drawing_info, show_drawing_info, continue_drawing, \
+from core.handlers.drawing_handlers import view_drawing_info, show_drawing_info, continue_drawing, \
     handle_end_draw_callback, show_drawing_summary, show_drawing_winners
-from IvaslaviaBot.core.utils.menu_utils import back_to_previous_menu
-from IvaslaviaBot.core.utils.stateform import NewDrawingState, ApplicationForm
+from core.utils.menu_utils import back_to_previous_menu
+from core.utils.stateform import NewDrawingState, ApplicationForm
 from config import TOKEN
 from core.handlers.basic import cmd_start
 from core.handlers.admin_handlers import cmd_admin, handle_admin_callback, set_drawing_title, set_drawing_description, \

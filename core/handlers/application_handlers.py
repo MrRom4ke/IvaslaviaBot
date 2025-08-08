@@ -3,11 +3,11 @@ from aiogram.fsm.context import FSMContext
 from aiogram import Bot
 import os
 
-from IvaslaviaBot.core.db.applications_crud import update_application_status, get_application_by_user_and_drawing, \
+from core.db.applications_crud import update_application_status, get_application_by_user_and_drawing, \
     create_application, get_participants_by_status
-from IvaslaviaBot.core.keyboards.admin_inline import create_screenshot_review_keyboard, create_payment_review_keyboard
-from IvaslaviaBot.core.keyboards.app_inline import create_back_only_keyboard
-from IvaslaviaBot.core.utils.menu_utils import update_or_send_callback_message
+from core.keyboards.admin_inline import create_screenshot_review_keyboard, create_payment_review_keyboard
+from core.keyboards.app_inline import create_back_only_keyboard
+from core.utils.menu_utils import update_or_send_callback_message
 
 
 async def handle_screenshot(message: Message, state: FSMContext, bot: Bot):

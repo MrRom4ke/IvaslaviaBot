@@ -1,8 +1,8 @@
 from aiogram import Bot
 from aiogram.types import CallbackQuery
 
-from IvaslaviaBot.core.db.users_crud import get_user_by_telegram_id, create_user
-from IvaslaviaBot.core.keyboards.inline import start_inline_keyboard
+from core.db.users_crud import get_user_by_telegram_id, create_user
+from core.keyboards.inline import start_inline_keyboard
 
 
 # Хендлер для обработки колбэка "back_to_user_menu"

@@ -4,10 +4,10 @@ from aiogram import Bot
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 
-from IvaslaviaBot.core.db.users_crud import get_user_by_telegram_id, create_user
+from core.db.users_crud import get_user_by_telegram_id, create_user
 # from core.db.models import add_application, add_payment, get_application, increment_attempts
-from IvaslaviaBot.core.keyboards.inline import admin_confirm_payment_keyboard, admin_confirm_photo_keyboard, call_operator_button, confirm_payment_button, start_inline_keyboard
-from IvaslaviaBot.core.utils.menu_utils import update_or_send_message
+from core.keyboards.inline import admin_confirm_payment_keyboard, admin_confirm_photo_keyboard, call_operator_button, confirm_payment_button, start_inline_keyboard
+from core.utils.menu_utils import update_or_send_message
 
 # Создаём глобальный словарь для блокировки по пользователю
 locks = {}

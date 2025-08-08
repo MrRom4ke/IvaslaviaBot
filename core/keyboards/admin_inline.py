@@ -104,13 +104,13 @@ def generate_drawing_summary_keyboard(drawing_id: int, winners_count: int) -> In
 
 
 
-def generate_winner_selection_keyboard(drawing_id, participant_index, total_participants, application_id):
+def generate_winner_selection_keyboard(drawing_id, participant_index, total_participants, user_id):
     """Генерирует клавиатуру для выбора победителя."""
     builder = InlineKeyboardBuilder()
 
     builder.button(
         text="👑 Выбрать победителя",
-        callback_data=f"set_winner_{application_id}_{drawing_id}"  # Передаем application_id
+        callback_data=f"set_winner_{user_id}_{drawing_id}"  # Передаем user_id
     )
 
     # Добавляем кнопки для переключения участников

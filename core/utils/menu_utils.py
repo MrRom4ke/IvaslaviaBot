@@ -8,16 +8,16 @@ async def back_to_previous_menu(callback_query: CallbackQuery, state: FSMContext
     previous_menu = data.get("previous_menu")
 
     if previous_menu == "admin_panel":
-        from IvaslaviaBot.core.handlers.admin_handlers import show_admin_panel
+        from core.handlers.admin_handlers import show_admin_panel
         await show_admin_panel(callback_query.message, state)
     elif previous_menu == "active_draws":
-        from IvaslaviaBot.core.handlers.admin_handlers import show_active_draws
+        from core.handlers.admin_handlers import show_active_draws
         await show_active_draws(callback_query, state)
     elif previous_menu == "start_menu":
-        from IvaslaviaBot.core.handlers.basic import cmd_start
+        from core.handlers.basic import cmd_start
         await cmd_start(callback_query.message, state)
     elif previous_menu == "draws_menu":
-        from IvaslaviaBot.core.handlers.callback import inline_handler
+        from core.handlers.callback import inline_handler
         await inline_handler(callback_query, state)
 
 

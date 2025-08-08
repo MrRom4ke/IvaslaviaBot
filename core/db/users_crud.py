@@ -1,5 +1,5 @@
 # users_crud.py
-from IvaslaviaBot.core.db.database_connection import get_connection
+from core.db.database_connection import get_connection
 
 
 def create_user(name, telegram_id, contact_info=None):

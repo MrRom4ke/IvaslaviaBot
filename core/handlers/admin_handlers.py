@@ -6,23 +6,23 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery, FSInputFile
 
-from IvaslaviaBot.core.db.applications_crud import update_application_status, \
+from core.db.applications_crud import update_application_status, \
     increase_attempts, delete_application, get_application_by_user_and_drawing, get_participants_by_status
-from IvaslaviaBot.core.db.drawings_crud import create_new_drawing, update_drawings_status, \
+from core.db.drawings_crud import create_new_drawing, update_drawings_status, \
     get_completed_drawings, get_drawings_by_status, set_winners_count_in_db, get_winners, get_winners_count, \
-    set_drawing_status
-from IvaslaviaBot.core.db.winners_crud import add_winner
-from IvaslaviaBot.core.handlers.application_handlers import show_screenshot_review
-from IvaslaviaBot.core.handlers.drawing_handlers import show_drawing_summary
-from IvaslaviaBot.core.keyboards.admin_inline import generate_admin_menu_keyboard, cancel_button_keyboard, \
+    set_drawing_status, get_drawing_by_id
+from core.db.winners_crud import add_winner
+from core.handlers.application_handlers import show_screenshot_review
+from core.handlers.drawing_handlers import show_drawing_summary
+from core.keyboards.admin_inline import generate_admin_menu_keyboard, cancel_button_keyboard, \
     generate_winner_selection_keyboard
-from IvaslaviaBot.core.keyboards.app_inline import create_back_only_keyboard
-from IvaslaviaBot.core.keyboards.drawing_inline import generate_drawings_list_keyboard, generate_drawings_keyboard, \
+from core.keyboards.app_inline import create_back_only_keyboard
+from core.keyboards.drawing_inline import generate_drawings_list_keyboard, generate_drawings_keyboard, \
     generate_complete_drawing_keyboard, generate_completed_drawings_list_keyboard, generate_cancel_drawing_keyboard
-from IvaslaviaBot.core.utils.menu_utils import update_or_send_message, update_or_send_callback_message
-from IvaslaviaBot.core.utils.stateform import ApplicationForm, NewDrawingState
-from IvaslaviaBot.core.keyboards.inline import admin_keyboard
-from IvaslaviaBot.config import ADMIN_ID
+from core.utils.menu_utils import update_or_send_message, update_or_send_callback_message
+from core.utils.stateform import ApplicationForm, NewDrawingState
+from core.keyboards.inline import admin_keyboard
+from config import ADMIN_ID
 
 
 # Проверка, является ли пользователь администратором
@@ -315,22 +315,27 @@ async def select_winners(callback_query: CallbackQuery, bot: Bot, state: FSMCont
     # Получаем ID розыгрыша
     drawing_id = int(callback_query.data.split("_")[-1])
 
-    # ✅ Добавляем дебаг-лог для проверки списка участников
+    # ✅ Получаем участников и победителей
     participants = get_participants_by_status(drawing_id, status="payment_confirmed")
     print(f"DEBUG: Participants (drawing {drawing_id}): {participants}")
 
     winners = get_winners(drawing_id)
-    total_participants = len(participants)
+    winner_user_ids = {w['user_id'] for w in winners}
+
+    # ✅ Исключаем уже выбранных победителей из пагинации
+    remaining_participants = [p for p in participants if p['user_id'] not in winner_user_ids]
+
+    total_participants = len(remaining_participants)
     winner_count = get_winners_count(drawing_id)
 
     print(f'Всего участников: {total_participants}, Нужно выбрать: {winner_count}, Уже выбрано: {len(winners)}')
 
-    # ✅ Если `get_participants_by_status()` снова вернул пустой список — отправляем сообщение и останавливаемся
+    # ✅ Если участников не осталось — все победители выбраны либо никого нельзя выбрать
     if total_participants == 0:
         await bot.send_message(
             chat_id=callback_query.message.chat.id,
-            text="⚠️ В конкурсе нет участников, отмените розыгрыш:",
-            reply_markup=generate_cancel_drawing_keyboard(drawing_id),
+            text="✅ Все доступные участники уже выбраны победителями. Завершите розыгрыш.",
+            reply_markup=generate_complete_drawing_keyboard(drawing_id),
         )
         return
 
@@ -347,8 +352,8 @@ async def select_winners(callback_query: CallbackQuery, bot: Bot, state: FSMCont
     if participant_index < 0 or participant_index >= total_participants:
         participant_index = 0
 
-    # Получаем текущего участника
-    participant = participants[participant_index]
+    # Получаем текущего участника из оставшихся
+    participant = remaining_participants[participant_index]
     print(f'{participant_index=}')
     print(f'{participant=}')
     user_id = participant["user_id"]
@@ -363,13 +368,26 @@ async def select_winners(callback_query: CallbackQuery, bot: Bot, state: FSMCont
 
     # ✅ Отправляем новое сообщение с фото
     photo = FSInputFile(photo_path) if os.path.exists(photo_path) else None
+    # Формируем отображение имени участника: alias если есть, иначе tg id
+    participant_alias = participant.get("telegram_alias")
+    participant_display = (
+        f"[@{participant_alias}](tg://user?id={telegram_id})"
+        if participant_alias else f"[{telegram_id}](tg://user?id={telegram_id})"
+    )
+
+    winners_lines = []
+    for i, w in enumerate(winners):
+        alias = w.get('telegram_alias')
+        if alias:
+            winners_lines.append(f"{i + 1}. [@{alias}](tg://user?id={w['telegram_id']})")
+        else:
+            winners_lines.append(f"{i + 1}. [{w['telegram_id']}](tg://user?id={w['telegram_id']})")
+
     message_text = (
-            f"🎯 **Выбор победителей**\n\n"
-            f"📌 Участник {participant_index + 1} из {total_participants}\n"
-            f"👤 Telegram ID: [{telegram_id}](tg://user?id={telegram_id})\n\n"
-            "🏆 **Победители:**\n" +
-            "\n".join(
-                [f"{i + 1}. [{w['telegram_id']}](tg://user?id={w['telegram_id']})" for i, w in enumerate(winners)])
+        f"🎯 **Выбор победителей**\n\n"
+        f"📌 Участник {participant_index + 1} из {total_participants}\n"
+        f"👤 Пользователь: {participant_display}\n\n"
+        "🏆 **Победители:**\n" + ("\n".join(winners_lines) if winners_lines else "—")
     )
 
     if photo:
@@ -429,6 +447,8 @@ async def prev_participant(query: CallbackQuery, state: FSMContext):
 async def set_winner(query: CallbackQuery, bot: Bot, state: FSMContext):
     """Делает текущего участника победителем."""
 
+    print(f"🔍 DEBUG: set_winner - НАЧАЛО ФУНКЦИИ - ПЕРВАЯ СТРОКА")
+    print(f"🔍 DEBUG: set_winner - НАЧАЛО ФУНКЦИИ")
     print(f"Received callback_data: {query.data}")  # Отладка
 
     parts = query.data.split("_")
@@ -442,30 +462,102 @@ async def set_winner(query: CallbackQuery, bot: Bot, state: FSMContext):
     _, _, user_id, drawing_id = parts
     drawing_id = int(drawing_id)
     user_id = int(user_id)  # Теперь работаем с user_id
+    
+    print(f"🔍 DEBUG: user_id={user_id}, drawing_id={drawing_id}")
 
     # Получаем участника по user_id
+    print(f"🔍 DEBUG: Вызываем get_participants_by_status")
     participants = get_participants_by_status(drawing_id, status="payment_confirmed")
+    print(f"🔍 DEBUG: Получены участники: {participants}")
+    
     participant = next((p for p in participants if p["user_id"] == user_id), None)
+    print(f"🔍 DEBUG: Найденный участник: {participant}")
 
     if not participant:
         print(f"❌ Ошибка: Не найден участник с user_id={user_id}")
         await query.answer("Ошибка: участник не найден.", show_alert=True)
         return
 
+    # Получаем информацию о розыгрыше для уведомления
+    print(f"🔍 DEBUG: Вызываем get_drawing_by_id")
+    drawing = get_drawing_by_id(drawing_id)
+    print(f"🔍 DEBUG: Получена информация о розыгрыше: {drawing}")
+    
+    drawing_title = drawing['title'] if drawing else "розыгрыше"
+    print(f"🔍 DEBUG: Название розыгрыша: {drawing_title}")
+    
+    # Сначала пытаемся добавить победителя в БД. Сообщение отправляем ТОЛЬКО при успешной вставке,
+    # чтобы избежать дублей при повторных нажатиях.
     try:
-        # Добавляем победителя в БД
         add_winner(drawing_id, participant)
         await query.answer("✅ Участник добавлен в победители.")
+
+        # Отправляем уведомление победителю только после успешного добавления
+        winner_telegram_id = participant['telegram_id']
+        winner_message = (
+            f"🎉 Поздравляем! Вы стали победителем в розыгрыше «{drawing_title}»! 🏆\n\n"
+            f"Мы свяжемся с вами для получения приза."
+        )
+
+        print(f"🔍 DEBUG: Попытка отправки уведомления победителю {winner_telegram_id}")
+        print(f"🔍 DEBUG: Сообщение: {winner_message}")
+
+        try:
+            await bot.send_message(chat_id=winner_telegram_id, text=winner_message)
+            print(f"✅ Уведомление отправлено победителю {winner_telegram_id}")
+        except Exception as e:
+            print(f"⚠️ Не удалось отправить уведомление победителю {winner_telegram_id}: {e}")
+            print(f"🔍 DEBUG: Тип ошибки: {type(e).__name__}")
+            print(f"🔍 DEBUG: Детали ошибки: {str(e)}")
+
     except ValueError as e:
+        # Уже добавлен в победители — уведомление НЕ отправляем повторно
         print(f"Ошибка: {e}")
         await query.answer(f"⚠️ {e}", show_alert=True)
 
     # Переход к следующему шагу выбора победителей
+    print(f"🔍 DEBUG: set_winner - КОНЕЦ ФУНКЦИИ, вызываем select_winners")
     await select_winners(query, bot, state)
 
 async def complete_drawing(query: CallbackQuery):
     """Завершает розыгрыш."""
     drawing_id = int(query.data.split("_")[-1])
+
+    # Получаем информацию о розыгрыше
+    drawing = get_drawing_by_id(drawing_id)
+    drawing_title = drawing['title'] if drawing else "розыгрыше"
+
+    # Получаем всех победителей
+    winners = get_winners(drawing_id)
+    print(f"🔍 DEBUG: Найдено победителей: {len(winners)}")
+    for winner in winners:
+        print(f"🔍 DEBUG: Победитель: {winner}")
+
+    # Получаем всех участников со статусом "payment_confirmed"
+    all_participants = get_participants_by_status(drawing_id, status="payment_confirmed")
+    winner_telegram_ids = {winner['telegram_id'] for winner in winners}
+    print(f"🔍 DEBUG: Всего участников: {len(all_participants)}")
+    print(f"🔍 DEBUG: ID победителей: {winner_telegram_ids}")
+
+    # Уведомления победителям при завершении НЕ отправляем, чтобы не дублировать с сообщением из set_winner
+
+    # Отправляем уведомления участникам, которые не стали победителями
+    for participant in all_participants:
+        if participant['telegram_id'] not in winner_telegram_ids:
+            try:
+                participant_message = f"📢 Розыгрыш «{drawing_title}» завершен!\n\nК сожалению, вы не стали победителем в этом розыгрыше. Не расстраивайтесь, участвуйте в следующих розыгрышах! 🍀"
+                print(f"🔍 DEBUG: Отправка уведомления участнику {participant['telegram_id']}")
+                print(f"🔍 DEBUG: Сообщение: {participant_message}")
+                
+                await query.bot.send_message(
+                    chat_id=participant['telegram_id'],
+                    text=participant_message
+                )
+                print(f"✅ Уведомление о завершении отправлено участнику {participant['telegram_id']}")
+            except Exception as e:
+                print(f"⚠️ Не удалось отправить уведомление участнику {participant['telegram_id']}: {e}")
+                print(f"🔍 DEBUG: Тип ошибки: {type(e).__name__}")
+                print(f"🔍 DEBUG: Детали ошибки: {str(e)}")
 
     # Обновляем статус розыгрыша
     set_drawing_status(drawing_id, "completed")

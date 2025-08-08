@@ -1,5 +1,5 @@
 # winners_crud.py
-from IvaslaviaBot.core.db.database_connection import get_connection
+from core.db.database_connection import get_connection
 
 
 def add_winner(drawing_id: int, participant: dict):
@@ -9,6 +9,8 @@ def add_winner(drawing_id: int, participant: dict):
     :param drawing_id: ID розыгрыша.
     :param participant: Словарь с данными участника (включает user_id).
     """
+    print(f"🔍 DEBUG: add_winner - drawing_id: {drawing_id}, participant: {participant}")
+    
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -19,6 +21,7 @@ def add_winner(drawing_id: int, participant: dict):
     existing_winner = cursor.fetchone()
 
     if existing_winner:
+        print(f"🔍 DEBUG: Участник уже в победителях: {existing_winner}")
         conn.close()
         raise ValueError("Участник уже добавлен в победители.")
 
@@ -28,5 +31,6 @@ def add_winner(drawing_id: int, participant: dict):
         VALUES (?, ?)
     """, (drawing_id, participant['user_id']))
 
+    print(f"🔍 DEBUG: Победитель добавлен в БД: drawing_id={drawing_id}, user_id={participant['user_id']}")
     conn.commit()
     conn.close()

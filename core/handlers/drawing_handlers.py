@@ -4,15 +4,15 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
 from aiogram.utils.markdown import hbold
 
-from IvaslaviaBot.core.db.applications_crud import user_participates_in_drawing, create_application, get_status_counts, \
+from core.db.applications_crud import user_participates_in_drawing, create_application, get_status_counts, \
     get_application_by_user_and_drawing, get_participants_by_status
-from IvaslaviaBot.core.db.drawings_crud import get_drawing_by_id, get_drawings_by_status, get_winners
-from IvaslaviaBot.core.keyboards.admin_inline import create_check_buttons, generate_winners_summary_keyboard
-from IvaslaviaBot.core.keyboards.drawing_inline import create_drawing_info_buttons, generate_end_drawings_keyboard, \
+from core.db.drawings_crud import get_drawing_by_id, get_drawings_by_status, get_winners
+from core.keyboards.admin_inline import create_check_buttons, generate_winners_summary_keyboard
+from core.keyboards.drawing_inline import create_drawing_info_buttons, generate_end_drawings_keyboard, \
     generate_drawing_summary_keyboard
-from IvaslaviaBot.core.utils.menu_utils import update_or_send_callback_message
+from core.utils.menu_utils import update_or_send_callback_message
 
-from IvaslaviaBot.core.utils.stateform import ApplicationForm
+from core.utils.stateform import ApplicationForm
 
 
 async def view_drawing_info(callback_query: CallbackQuery, state: FSMContext):
@@ -280,11 +280,15 @@ async def show_drawing_winners(query: CallbackQuery):
         await query.answer("Победители еще не выбраны.", show_alert=True)
         return
 
-    # Формируем список победителей
-    winners_list = "\n".join([
-        f"{i + 1}. [{w['telegram_alias']}](https://t.me/{w['telegram_alias']})"
-        for i, w in enumerate(winners)
-    ])
+    # Формируем список победителей: если есть alias — используем @alias, иначе ссылка по ID
+    winners_lines = []
+    for i, w in enumerate(winners):
+        alias = w.get('telegram_alias')
+        if alias:
+            winners_lines.append(f"{i + 1}. [@{alias}](tg://user?id={w['telegram_id']})")
+        else:
+            winners_lines.append(f"{i + 1}. [{w['telegram_id']}](tg://user?id={w['telegram_id']})")
+    winners_list = "\n".join(winners_lines)
 
     message_text = f"🏆 Победители розыгрыша **{drawing_title}**:\n\n{winners_list}"
 

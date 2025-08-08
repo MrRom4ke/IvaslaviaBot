@@ -1,5 +1,5 @@
 # models.py
-from IvaslaviaBot.core.db.database_connection import get_connection
+from core.db.database_connection import get_connection
 
 
 def initialize_tables():

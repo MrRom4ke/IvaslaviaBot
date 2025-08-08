@@ -2,7 +2,7 @@
 import datetime
 import sqlite3
 
-from IvaslaviaBot.core.db.database_connection import get_connection
+from core.db.database_connection import get_connection
 
 def create_new_drawing(title: str, description: str = "", start_date=None, end_date=None, status="upcoming"):
     """Создает новый розыгрыш с заданным статусом (по умолчанию 'upcoming')."""
@@ -17,6 +17,8 @@ def create_new_drawing(title: str, description: str = "", start_date=None, end_d
 
 def get_drawing_by_id(drawing_id):
     """Возвращает информацию о розыгрыше по его ID."""
+    print(f"🔍 DEBUG: get_drawing_by_id - drawing_id: {drawing_id}")
+    
     conn = get_connection()
     conn.row_factory = sqlite3.Row  # Устанавливаем фабрику строк
     cursor = conn.cursor()
@@ -24,8 +26,11 @@ def get_drawing_by_id(drawing_id):
     row = cursor.fetchone()
     conn.close()
 
+    result = dict(row) if row else None
+    print(f"🔍 DEBUG: get_drawing_by_id результат: {result}")
+    
     # Возвращаем словарь
-    return dict(row) if row else None
+    return result
 
 
 def get_completed_drawings():
@@ -169,8 +174,10 @@ def get_winners(drawing_id):
     winners = cursor.fetchall()
     conn.close()
 
+    print(f"🔍 DEBUG: get_winners({drawing_id}) - сырые данные: {winners}")
+
     # Преобразуем список кортежей в список словарей
-    return [
+    result = [
         {
             "winner_id": row[0],
             "drawing_id": row[1],
@@ -180,6 +187,9 @@ def get_winners(drawing_id):
         }
         for row in winners
     ]
+    
+    print(f"🔍 DEBUG: get_winners({drawing_id}) - результат: {result}")
+    return result
 
 
 def get_winners_count(drawing_id):

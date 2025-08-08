@@ -1,5 +1,5 @@
 # applications_crud.py
-from IvaslaviaBot.core.db.database_connection import get_connection
+from core.db.database_connection import get_connection
 
 
 def create_application(telegram_id, drawing_id):
@@ -102,11 +102,13 @@ def get_participants_by_status(drawing_id, status=None):
     :param status: Фильтр по статусу (например, 'payment_confirmed')
     :return: Список участников
     """
+    print(f"🔍 DEBUG: get_participants_by_status - drawing_id: {drawing_id}, status: {status}")
+    
     conn = get_connection()
     cursor = conn.cursor()
 
     query = """
-    SELECT a.application_id, a.user_id, u.telegram_id, a.status
+    SELECT a.application_id, a.user_id, u.telegram_id, a.status, u.contact_info
     FROM Applications a
     JOIN Users u ON a.user_id = u.user_id
     WHERE a.drawing_id = ?
@@ -117,19 +119,28 @@ def get_participants_by_status(drawing_id, status=None):
         query += " AND a.status = ?"
         params.append(status)
 
+    print(f"🔍 DEBUG: SQL запрос: {query}")
+    print(f"🔍 DEBUG: Параметры: {params}")
+    
     cursor.execute(query, params)
     participants = cursor.fetchall()
     conn.close()
 
-    return [
+    print(f"🔍 DEBUG: Сырые данные участников: {participants}")
+    
+    result = [
         {
             "application_id": row[0],
             "user_id": row[1],
             "telegram_id": row[2],
             "status": row[3],
+            "telegram_alias": row[4],
         }
         for row in participants
     ]
+    
+    print(f"🔍 DEBUG: Результат get_participants_by_status: {result}")
+    return result
 
 def delete_application(application_id):
     """Удаляет заявку из базы данных."""

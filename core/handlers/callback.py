@@ -2,13 +2,13 @@ from aiogram import Bot
 from aiogram.types import CallbackQuery
 from aiogram.fsm.context import FSMContext
 
-from IvaslaviaBot.config import ADMIN_ID
-from IvaslaviaBot.core.db.drawings_crud import get_drawings_by_status
-from IvaslaviaBot.core.keyboards.drawing_inline import generate_drawings_keyboard
-from IvaslaviaBot.core.utils.menu_utils import update_or_send_callback_message
+from config import ADMIN_ID
+from core.db.drawings_crud import get_drawings_by_status
+from core.keyboards.drawing_inline import generate_drawings_keyboard
+from core.utils.menu_utils import update_or_send_callback_message
 
 # from core.db.models import delete_application, get_application, increment_attempts, update_status
-from IvaslaviaBot.core.utils.stateform import ApplicationForm
+from core.utils.stateform import ApplicationForm
 # from core.keyboards.inline import admin_confirm_payment_keyboard, call_operator_button, confirm_payment_button
 
 
