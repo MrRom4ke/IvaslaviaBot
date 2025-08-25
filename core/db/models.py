@@ -22,7 +22,8 @@ def initialize_tables():
             start_date TIMESTAMP,
             end_date TIMESTAMP,
             status TEXT CHECK (status IN ('upcoming', 'active', 'ready_to_draw', 'completed')) NOT NULL,
-            winners_count INTEGER DEFAULT 0
+            winners_count INTEGER DEFAULT 0,
+            max_participants INTEGER DEFAULT 0
         );
         """,
         """
@@ -78,6 +79,14 @@ def initialize_tables():
     cursor = conn.cursor()
     for query in queries:
         cursor.execute(query)
+    
+    # Добавляем поле max_participants к существующей таблице Drawings, если его нет
+    try:
+        cursor.execute("ALTER TABLE Drawings ADD COLUMN max_participants INTEGER DEFAULT 0")
+        print("✅ Добавлено поле max_participants в таблицу Drawings")
+    except Exception as e:
+        print(f"ℹ️ Поле max_participants уже существует или ошибка: {e}")
+    
     conn.commit()
     conn.close()
 

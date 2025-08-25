@@ -9,3 +9,4 @@ class NewDrawingState(StatesGroup):
     description = State()
     start_date = State()
     end_date = State()
+    max_participants = State()

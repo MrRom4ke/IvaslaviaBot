@@ -15,7 +15,7 @@ from core.utils.stateform import NewDrawingState, ApplicationForm
 from config import TOKEN
 from core.handlers.basic import cmd_start
 from core.handlers.admin_handlers import cmd_admin, handle_admin_callback, set_drawing_title, set_drawing_description, \
-    set_drawing_start_date, set_drawing_end_date, show_active_draws, show_completed_draws, \
+    set_drawing_start_date, set_drawing_end_date, set_drawing_max_participants, show_active_draws, show_completed_draws, \
     cancel_creation, approve_screenshot, reject_screenshot, next_screenshot, prev_screenshot, set_winners_count, \
     select_winners, next_participant, prev_participant, set_winner, complete_drawing
 from core.handlers.callback import call_operator_callback, inline_handler
@@ -58,6 +58,7 @@ dp.message.register(set_drawing_title, NewDrawingState.title)
 dp.message.register(set_drawing_description, NewDrawingState.description)
 dp.message.register(set_drawing_start_date, NewDrawingState.start_date)
 dp.message.register(set_drawing_end_date, NewDrawingState.end_date)
+dp.message.register(set_drawing_max_participants, NewDrawingState.max_participants)
 dp.callback_query.register(cancel_creation, lambda c: c.data == "cancel_creation")
 
 # Скриншоты заявки и оплаты

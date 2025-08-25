@@ -130,13 +130,54 @@ async def continue_drawing(callback_query: CallbackQuery, state: FSMContext):
             await callback_query.message.edit_text(
                 "Ваша оплата была отклонена. Пожалуйста, свяжитесь с организатором для решения проблемы."
             )
+        elif status == "completed":
+            # Заявка аннулирована - пользователь может попробовать снова
+            # Проверяем лимит участников перед созданием новой заявки
+            from core.db.drawings_crud import check_participant_limit
+            can_join, current_count, max_count = check_participant_limit(drawing_id)
+            
+            if not can_join:
+                drawing = get_drawing_by_id(drawing_id)
+                drawing_title = drawing['title'] if drawing else "Неизвестный"
+                await callback_query.message.edit_text(
+                    f"❌ К сожалению, в розыгрыше \"{drawing_title}\" уже достигнут лимит участников.\n\n"
+                    f"📊 Текущее количество: {current_count}/{max_count}\n"
+                    f"🔒 Попробуйте позже, возможно количество участников уменьшится."
+                )
+                return
+            
+            # Создаём новую заявку
+            create_application(user_id, drawing_id)
+            drawing = get_drawing_by_id(drawing_id)
+            drawing_title = drawing['title'] if drawing else "Неизвестный"
+
+            await callback_query.message.edit_text(
+                f"🔄 Ваша предыдущая заявка была аннулирована. Попробуйте снова!\n\n"
+                f"Для участия в розыгрыше \"{drawing_title}\" пришлите один корректный скриншот."
+            )
+            await state.update_data(selected_drawing_id=drawing_id)
+            await state.set_state(ApplicationForm.WAITING_FOR_SCREEN)
         else:
             # Любой другой статус
             await callback_query.message.edit_text(
                 "Ваша заявка находится в неизвестном состоянии. Пожалуйста, свяжитесь с поддержкой."
             )
     else:
-        # Создаём новую заявку, если её нет
+        # Проверяем лимит участников перед созданием заявки
+        from core.db.drawings_crud import check_participant_limit
+        can_join, current_count, max_count = check_participant_limit(drawing_id)
+        
+        if not can_join:
+            drawing = get_drawing_by_id(drawing_id)
+            drawing_title = drawing['title'] if drawing else "Неизвестный"
+            await callback_query.message.edit_text(
+                f"❌ К сожалению, в розыгрыше \"{drawing_title}\" уже достигнут лимит участников.\n\n"
+                f"📊 Текущее количество: {current_count}/{max_count}\n"
+                f"🔒 Попробуйте позже, возможно количество участников уменьшится. "
+            )
+            return
+        
+        # Создаём новую заявку, если её нет и есть место
         create_application(user_id, drawing_id)
         drawing = get_drawing_by_id(drawing_id)
         drawing_title = drawing['title'] if drawing else "Неизвестный"
@@ -176,6 +217,10 @@ async def show_drawing_info(callback_query: CallbackQuery, state: FSMContext):
     start_date = datetime.strptime(drawing['start_date'], "%Y-%m-%d %H:%M:%S").strftime('%d.%m.%Y') if drawing['start_date'] else "Не указана"
     end_date = datetime.strptime(drawing['end_date'], "%Y-%m-%d %H:%M:%S").strftime('%d.%m.%Y') if drawing['end_date'] else "Не указана"
 
+    # Получаем информацию о лимите участников
+    max_participants = drawing.get('max_participants', 0)
+    limit_info = f"  Лимит участников:----------- {max_participants}" if max_participants > 0 else "  Лимит участников:------------ Не установлен"
+    
     info_message = (
         f"```\n"
         f"Название: {drawing['title']}\n"
@@ -184,6 +229,7 @@ async def show_drawing_info(callback_query: CallbackQuery, state: FSMContext):
         f"Дата окончания:               {end_date}\n\n"
         f"Общая статистика заявок:\n"
         f"  Количество участников:------ {participants_count}\n"
+        f"{limit_info}\n"
         f"  Ожидают проверки:----------- {pending}\n"
         f"  Одобрено:------------------- {total_approved}\n"
         f"  Отклонено:------------------ {rejected}\n"

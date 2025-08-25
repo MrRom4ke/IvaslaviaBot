@@ -4,14 +4,14 @@ import sqlite3
 
 from core.db.database_connection import get_connection
 
-def create_new_drawing(title: str, description: str = "", start_date=None, end_date=None, status="upcoming"):
+def create_new_drawing(title: str, description: str = "", start_date=None, end_date=None, max_participants=0, status="upcoming"):
     """Создает новый розыгрыш с заданным статусом (по умолчанию 'upcoming')."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO Drawings (title, description, created_at, start_date, end_date, status)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (title, description, datetime.datetime.now(), start_date, end_date, status))
+        INSERT INTO Drawings (title, description, created_at, start_date, end_date, max_participants, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (title, description, datetime.datetime.now(), start_date, end_date, max_participants, status))
     conn.commit()
     conn.close()
 
@@ -212,3 +212,41 @@ def get_winners_count(drawing_id):
     if result:
         return result[0]
     return 0  # Возвращаем 0, если запись не найдена
+
+def check_participant_limit(drawing_id):
+    """
+    Проверяет, не превышен ли лимит участников для розыгрыша.
+    
+    :param drawing_id: ID розыгрыша
+    :return: (can_join, current_count, max_count) - можно ли присоединиться, текущее количество, максимальное количество
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    # Получаем максимальное количество участников
+    cursor.execute("""
+        SELECT max_participants
+        FROM Drawings
+        WHERE drawing_id = ?
+    """, (drawing_id,))
+    max_result = cursor.fetchone()
+    
+    if not max_result or max_result[0] == 0:
+        # Если лимит не установлен (0), то можно присоединиться
+        conn.close()
+        return True, 0, 0
+    
+    max_participants = max_result[0]
+    
+    # Получаем текущее количество активных участников (исключаем отклоненные и аннулированные)
+    cursor.execute("""
+        SELECT COUNT(*)
+        FROM Applications
+        WHERE drawing_id = ? AND status NOT IN ('rejected', 'completed')
+    """, (drawing_id,))
+    current_count = cursor.fetchone()[0]
+    
+    conn.close()
+    
+    can_join = current_count < max_participants
+    return can_join, current_count, max_participants

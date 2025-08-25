@@ -74,8 +74,10 @@ def create_payment_review_keyboard(drawing_id, participant_index, total_particip
         InlineKeyboardButton(text="❌ Отклонить", callback_data=f"reject_payment_{drawing_id}_{participant_index}")
     )
 
-    # Кнопка назад
-    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"back_to_drawing_info_{drawing_id}"))
+    # Кнопка "Назад" к предыдущему меню
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Назад", callback_data=f"manage_drawing_{drawing_id}")
+    )
 
     return builder.as_markup()
 

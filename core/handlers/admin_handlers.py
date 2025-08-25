@@ -132,19 +132,41 @@ async def set_drawing_end_date(message: Message, state: FSMContext):
             await message.answer("Дата окончания должна быть позже даты начала. Попробуйте снова:", reply_markup=cancel_button_keyboard())
             return
 
+        await state.update_data(end_date=end_date)
+        await state.set_state(NewDrawingState.max_participants)  # Переход к следующему состоянию
+        await message.answer("Введите максимальное количество участников (число от 1 до 1000):", reply_markup=cancel_button_keyboard())
+    except ValueError:
+        await message.answer("Некорректный формат даты. Попробуйте снова (dd.mm.yyyy):", reply_markup=cancel_button_keyboard())
+
+# Шаг 5: Ввод максимального количества участников
+async def set_drawing_max_participants(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        await message.answer("У вас нет доступа к этой команде.")
+        await state.clear()
+        return
+
+    try:
+        max_participants = int(message.text)
+        if max_participants < 1 or max_participants > 1000:
+            await message.answer("Количество участников должно быть от 1 до 1000. Попробуйте снова:", reply_markup=cancel_button_keyboard())
+            return
+
+        data = await state.get_data()
+        
         # Сохраняем данные и создаем новый розыгрыш
         create_new_drawing(
             title=data["title"],
             description=data["description"],
             start_date=data["start_date"],
-            end_date=end_date,
-            status="upcoming"  # или "active", в зависимости от логики
+            end_date=data["end_date"],
+            max_participants=max_participants,
+            status="upcoming"
         )
 
         await message.answer("Новый розыгрыш успешно создан!")
         await state.clear()  # Завершение состояния после создания
     except ValueError:
-        await message.answer("Некорректный формат даты. Попробуйте снова (dd.mm.yyyy):", reply_markup=cancel_button_keyboard())
+        await message.answer("Некорректный формат числа. Попробуйте снова:", reply_markup=cancel_button_keyboard())
 
 async def cancel_creation(callback_query: CallbackQuery, state: FSMContext, bot: Bot):
     """Отменяет процесс создания розыгрыша и очищает состояние."""
@@ -218,9 +240,9 @@ async def reject_screenshot(callback_query: CallbackQuery, state: FSMContext):
     max_attempts = 3
 
     if attempts >= max_attempts:
-        # Удаляем заявку и фотографию
+        # Аннулируем заявку (меняем статус на completed) и удаляем фотографию
         photo_path = os.path.abspath(f"images/application/{telegram_id}_{drawing_id}.jpg")
-        delete_application(application_id)
+        update_application_status(application_id, status="completed")
 
         # Удаляем фотографию, если она существует
         if os.path.exists(photo_path):
@@ -332,10 +354,27 @@ async def select_winners(callback_query: CallbackQuery, bot: Bot, state: FSMCont
 
     # ✅ Если участников не осталось — все победители выбраны либо никого нельзя выбрать
     if total_participants == 0:
+        # Формируем список победителей для отображения
+        winners_lines = []
+        for i, w in enumerate(winners):
+            alias = w.get('telegram_alias')
+            if alias:
+                winners_lines.append(f"{i + 1}. [@{alias}](tg://user?id={w['telegram_id']})")
+            else:
+                winners_lines.append(f"{i + 1}. [{w['telegram_id']}](tg://user?id={w['telegram_id']})")
+        
+        winners_list = "\n".join(winners_lines) if winners_lines else "—"
+        
+        message_text = (
+            f"✅ Все доступные участники уже выбраны победителями. Завершите розыгрыш.\n\n"
+            f"🏆 **Победители:**\n{winners_list}"
+        )
+        
         await bot.send_message(
             chat_id=callback_query.message.chat.id,
-            text="✅ Все доступные участники уже выбраны победителями. Завершите розыгрыш.",
+            text=message_text,
             reply_markup=generate_complete_drawing_keyboard(drawing_id),
+            parse_mode="Markdown"
         )
         return
 
