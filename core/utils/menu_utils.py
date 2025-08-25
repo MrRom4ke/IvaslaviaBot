@@ -14,8 +14,8 @@ async def back_to_previous_menu(callback_query: CallbackQuery, state: FSMContext
         from core.handlers.admin_handlers import show_active_draws
         await show_active_draws(callback_query, state)
     elif previous_menu == "start_menu":
-        from core.handlers.basic import cmd_start
-        await cmd_start(callback_query.message, state)
+        from core.handlers.basic import show_start_menu
+        await show_start_menu(callback_query.message, state)
     elif previous_menu == "draws_menu":
         from core.handlers.callback import inline_handler
         await inline_handler(callback_query, state)

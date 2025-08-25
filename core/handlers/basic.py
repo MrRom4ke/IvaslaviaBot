@@ -21,6 +21,15 @@ async def cmd_start(message: Message, state: FSMContext):
             telegram_id=message.from_user.id,
             contact_info=message.from_user.username
         )
+    
+    # Для команды /start всегда отправляем новое сообщение, а не редактируем
+    await message.answer(
+        text="Добро пожаловать! Выберите опцию ниже:",
+        reply_markup=start_inline_keyboard())
+
+# Функция для отображения стартового меню (используется в callback)
+async def show_start_menu(message: Message, state: FSMContext):
+    """Отображает стартовое меню (для использования в callback)"""
     await update_or_send_message(
         message=message,
         text="Добро пожаловать! Выберите опцию ниже:",
