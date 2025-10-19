@@ -18,8 +18,8 @@ def create_application(telegram_id, drawing_id):
 
     # Создаем заявку
     cursor.execute("""
-        INSERT INTO Applications (user_id, drawing_id, status, submitted_at)
-        VALUES (?, ?, 'pending', CURRENT_TIMESTAMP)
+        INSERT INTO Applications (user_id, drawing_id, status, submitted_at, attempts_payment)
+        VALUES (?, ?, 'pending', CURRENT_TIMESTAMP, 0)
     """, (user_id, drawing_id))
 
     conn.commit()
@@ -79,6 +79,19 @@ def increase_attempts(application_id):
 
     conn.commit()
     conn.close()
+
+def increase_payment_attempts(application_id):
+    """Увеличивает количество попыток оплаты для заявки."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE Applications
+        SET attempts_payment = attempts_payment + 1
+        WHERE application_id = ?
+    """, (application_id,))
+    conn.commit()
+    conn.close()
+
 
 def user_participates_in_drawing(telegram_id, drawing_id):
     """Проверяет, участвует ли пользователь в указанном розыгрыше."""

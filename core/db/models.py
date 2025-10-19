@@ -33,6 +33,7 @@ def initialize_tables():
             drawing_id INTEGER REFERENCES Drawings(drawing_id) ON DELETE CASCADE,
             status TEXT CHECK (status IN ('pending', 'approved', 'rejected', 'payment_pending', 'payment_bill_loaded', 'payment_confirmed', 'payment_reject', 'completed')) NOT NULL,
             attempts INTEGER DEFAULT 0 CHECK (attempts >= 0),
+            attempts_payment INTEGER DEFAULT 0 CHECK (attempts_payment >= 0),
             submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
         """,
@@ -86,6 +87,12 @@ def initialize_tables():
         print("✅ Добавлено поле max_participants в таблицу Drawings")
     except Exception as e:
         print(f"ℹ️ Поле max_participants уже существует или ошибка: {e}")
+
+    try:
+        cursor.execute("ALTER TABLE Applications ADD COLUMN attempts_payment INTEGER DEFAULT 0")
+        print("✅ Добавлено поле attempts_payment в таблицу Applications")
+    except Exception as e:
+        print(f"ℹ️ Поле attempts_payment уже существует или ошибка: {e}")
     
     conn.commit()
     conn.close()

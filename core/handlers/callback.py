@@ -36,12 +36,12 @@ async def call_operator_callback(callback_query: CallbackQuery):
 
     # Сообщаем пользователю, что оператор будет вызван, и даем ссылку на администратора
     await callback_query.message.answer(
-        f"Связаться с оператором: [нажмите здесь]({f"tg://user?id={ADMIN_ID}"})",
+        f"Связаться с оператором: [нажмите здесь](tg://user?id={ADMIN_ID})",
         parse_mode="Markdown"
     )
     await bot.send_message(
         ADMIN_ID,
-        f"АДМИН: Пользователь [ID {user_id}]({f"tg://user?id={user_id}"}) хочет связаться с оператором.",
+        f"АДМИН: Пользователь [ID {user_id}](tg://user?id={user_id}) хочет связаться с оператором.",
         parse_mode="Markdown"
     )
     await callback_query.answer()

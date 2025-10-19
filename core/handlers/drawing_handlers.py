@@ -7,6 +7,7 @@ from aiogram.utils.markdown import hbold
 from core.db.applications_crud import user_participates_in_drawing, create_application, get_status_counts, \
     get_application_by_user_and_drawing, get_participants_by_status
 from core.db.drawings_crud import get_drawing_by_id, get_drawings_by_status, get_winners
+from config import ADMIN_ID
 from core.keyboards.admin_inline import create_check_buttons, generate_winners_summary_keyboard
 from core.keyboards.drawing_inline import create_drawing_info_buttons, generate_end_drawings_keyboard, \
     generate_drawing_summary_keyboard
@@ -59,7 +60,7 @@ async def view_drawing_info(callback_query: CallbackQuery, state: FSMContext):
                 reply_markup=create_drawing_info_buttons(drawing_id, None))
         elif status == "rejected":
             await callback_query.message.edit_text(
-                "f❌ Статус вашей заявки: \nСкриншот отклонён.\nУ вас осталось попыток: {3 - attempts}.\nВы можете загрузить новый скриншот.",
+                f"❌ Статус вашей заявки: \nСкриншот отклонён.\nУ вас осталось попыток: {3 - attempts}.\nВы можете загрузить новый скриншот.",
                 reply_markup=create_drawing_info_buttons(drawing_id, "🆕 Загрузить новый скриншот"))
         elif status == "payment_pending":
             await callback_query.message.edit_text(
@@ -75,8 +76,9 @@ async def view_drawing_info(callback_query: CallbackQuery, state: FSMContext):
                 reply_markup=create_drawing_info_buttons(drawing_id, None))
         elif status == "payment_reject":
             await callback_query.message.edit_text(
-                "❌ Статус вашей заявки: \nОплата отклонена. \nВы можете загрузить новый скриншот оплаты.",
-                reply_markup=create_drawing_info_buttons(drawing_id, "🧾 Загрузить новый чек об оплате"))
+                f"❌ Статус вашей заявки: \nОплата отклонена. \nОбратитесь к [оператору](tg://user?id={ADMIN_ID}) для помощи в процессе оплаты.",
+                parse_mode="Markdown",
+                reply_markup=create_drawing_info_buttons(drawing_id, None))
     else:
         await callback_query.message.edit_text(
             "🔘 У вас нет активной заявки на участие в этом розыгрыше.\n",
@@ -128,7 +130,8 @@ async def continue_drawing(callback_query: CallbackQuery, state: FSMContext):
         elif status == "payment_reject":
             # Оплата отклонена
             await callback_query.message.edit_text(
-                "Ваша оплата была отклонена. Пожалуйста, свяжитесь с организатором для решения проблемы."
+                f"Ваша оплата была отклонена. Обратитесь к [оператору](tg://user?id={ADMIN_ID}) для помощи в процессе оплаты.",
+                parse_mode="Markdown"
             )
         elif status == "completed":
             # Заявка аннулирована - пользователь может попробовать снова

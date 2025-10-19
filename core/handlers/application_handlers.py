@@ -4,7 +4,8 @@ from aiogram import Bot
 import os
 
 from core.db.applications_crud import update_application_status, get_application_by_user_and_drawing, \
-    create_application, get_participants_by_status
+    create_application, get_participants_by_status, increase_payment_attempts
+from config import ADMIN_ID
 from core.keyboards.admin_inline import create_screenshot_review_keyboard, create_payment_review_keyboard
 from core.keyboards.app_inline import create_back_only_keyboard
 from core.utils.menu_utils import update_or_send_callback_message
@@ -231,11 +232,29 @@ async def reject_payment(callback_query: CallbackQuery, bot: Bot, state: FSMCont
         return
 
     participant = participants[participant_index]
-    update_application_status(participant['application_id'], status="payment_reject")
-    await bot.send_message(
-        chat_id=participant['telegram_id'],
-        text="Ваша оплата была отклонена. Пожалуйста, свяжитесь с организатором для уточнения причин."
-    )
+    application = get_application_by_user_and_drawing(participant['telegram_id'], drawing_id)
+    if application: # Проверяем, что заявка найдена
+        current_attempts_payment = application.get('attempts_payment', 0)
+    else:
+        current_attempts_payment = 0 # Если заявка не найдена, устанавливаем 0 попыток
+
+    increase_payment_attempts(participant['application_id'])
+    new_attempts_payment = current_attempts_payment + 1
+
+    if new_attempts_payment >= 3:
+        update_application_status(participant['application_id'], status="payment_reject")
+        await bot.send_message(
+            chat_id=participant['telegram_id'],
+            text=f"Вы достигли максимального количества попыток подтверждения оплаты. Пожалуйста, обратитесь к [организатору](tg://user?id={ADMIN_ID}).",
+            parse_mode="Markdown"
+        )
+    else:
+        update_application_status(participant['application_id'], status="payment_pending") # Возвращаем статус на payment_pending
+        await bot.send_message(
+            chat_id=participant['telegram_id'],
+            text=f"Ваша оплата была отклонена. У вас осталось {3 - new_attempts_payment} попыток. Пожалуйста, отправьте скриншот повторно, или свяжитесь с [организатором](tg://user?id={ADMIN_ID}) для уточнения причин.",
+            parse_mode="Markdown"
+        )
 
     # Переходим к следующему участнику или обновляем текущего
     await show_payment_review(callback_query, bot, state, participant_index)
