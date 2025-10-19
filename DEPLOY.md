@@ -10,7 +10,7 @@
 
 ### 2. Настройка конфигурации
 
-Скопируйте пример файла окружения:
+**Вариант 1: Использование .env файла (рекомендуется для Docker)**
 ```bash
 cp env.example .env
 ```
@@ -21,12 +21,15 @@ BOT_TOKEN=your_bot_token_here
 ADMIN_ID=your_admin_telegram_id_here
 ```
 
-Или отредактируйте `config.ini` напрямую:
+**Вариант 2: Использование config.ini**
+Отредактируйте `config.ini` напрямую:
 ```ini
 [settings]
 TOKEN = your_bot_token
 ADMIN_ID = your_admin_telegram_id
 ```
+
+**Приоритет:** Переменные окружения (.env) имеют приоритет над config.ini
 
 ### 3. Запуск
 

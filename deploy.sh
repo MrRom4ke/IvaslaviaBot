@@ -17,9 +17,12 @@ if ! command -v docker-compose &> /dev/null; then
     exit 1
 fi
 
-# Проверяем наличие config.ini
-if [ ! -f "config.ini" ]; then
-    echo "❌ Файл config.ini не найден. Создайте его на основе config.ini.example"
+# Проверяем наличие конфигурации
+if [ ! -f "config.ini" ] && [ ! -f ".env" ]; then
+    echo "❌ Не найден ни config.ini, ни .env файл."
+    echo "Создайте один из них:"
+    echo "  cp env.example .env    # для Docker деплоя"
+    echo "  или отредактируйте config.ini"
     exit 1
 fi
 

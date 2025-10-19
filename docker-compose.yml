@@ -8,6 +8,8 @@ services:
     environment:
       # Переменные окружения (можно переопределить через .env файл)
       - PYTHONUNBUFFERED=1
+      - BOT_TOKEN=${BOT_TOKEN}
+      - ADMIN_ID=${ADMIN_ID}
     volumes:
       # Монтируем директорию с изображениями для сохранения данных
       - ./images:/app/images
