@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  ivaslavia-bot:
+    build: .
+    container_name: ivaslavia-bot
+    restart: unless-stopped
+    environment:
+      # Переменные окружения (можно переопределить через .env файл)
+      - PYTHONUNBUFFERED=1
+    volumes:
+      # Монтируем директорию с изображениями для сохранения данных
+      - ./images:/app/images
+      - ./database.db:/app/database.db
+      # Монтируем конфиг файл (опционально, для изменения без пересборки)
+      - ./config.ini:/app/config.ini
+    # Если нужны веб-хуки, раскомментируйте:
+    # ports:
+    #   - "8080:8080"
+    networks:
+      - bot-network
+
+networks:
+  bot-network:
+    driver: bridge
+
+# Опционально: добавить volume для базы данных
+volumes:
+  bot-data:
