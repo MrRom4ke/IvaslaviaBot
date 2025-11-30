@@ -26,11 +26,27 @@ if [ ! -f "config.ini" ] && [ ! -f ".env" ]; then
     exit 1
 fi
 
-# Создаем файл базы данных если его нет
-if [ ! -f "database.db" ]; then
+# Исправляем проблему с каталогами вместо файлов (если Docker создал каталоги)
+if [ -d "database.db" ]; then
+    echo "⚠️  database.db является каталогом, исправляем..."
+    rm -rf database.db
+    touch database.db
+    echo "✅ Файл database.db создан"
+elif [ ! -f "database.db" ]; then
     echo "📁 Создаем файл базы данных..."
     touch database.db
     echo "✅ Файл database.db создан"
+fi
+
+if [ -d "config.ini" ]; then
+    echo "⚠️  config.ini является каталогом, исправляем..."
+    rm -rf config.ini
+    touch config.ini
+    echo "✅ Файл config.ini создан"
+elif [ ! -f "config.ini" ]; then
+    echo "📁 Создаем файл config.ini..."
+    touch config.ini
+    echo "✅ Файл config.ini создан"
 fi
 
 # Останавливаем предыдущий контейнер если он запущен
