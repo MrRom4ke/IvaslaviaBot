@@ -1,9 +1,15 @@
+import time
+
 from aiogram import Bot
 from aiogram.types import CallbackQuery
 from aiogram.fsm.context import FSMContext
 
 from config import ADMIN_ID
-from core.db.drawings_crud import get_drawings_by_status
+
+OPERATOR_COOLDOWN_SEC = 300  # 5 минут
+from core.db.applications_crud import get_user_participations_by_telegram_id
+from core.db.drawings_crud import get_drawings_by_status, update_drawings_status
+from core.utils.application_utils import build_operator_admin_message
 from core.keyboards.drawing_inline import generate_drawings_keyboard
 from core.utils.menu_utils import update_or_send_callback_message
 
@@ -16,7 +22,7 @@ from core.utils.stateform import ApplicationForm
 async def inline_handler(callback_query: CallbackQuery, state: FSMContext):
     await state.update_data(previous_menu="start_menu")
 
-    # Получаем список активных и предстоящих розыгрышей
+    update_drawings_status()
     drawings = get_drawings_by_status(['active'])
     if not drawings:
         await callback_query.message.answer("На данный момент нет активных розыгрышей.")
@@ -30,20 +36,36 @@ async def inline_handler(callback_query: CallbackQuery, state: FSMContext):
     await callback_query.answer()
 
 # Обработка нажатия кнопки "Связаться с оператором"
-async def call_operator_callback(callback_query: CallbackQuery):
+async def call_operator_callback(callback_query: CallbackQuery, state: FSMContext):
     user_id = callback_query.from_user.id
     bot = callback_query.bot
 
-    # Сообщаем пользователю, что оператор будет вызван, и даем ссылку на администратора
+    data = await state.get_data()
+    last_call = data.get("operator_last_call")
+    now = time.time()
+    if last_call and now - last_call < OPERATOR_COOLDOWN_SEC:
+        remaining = int(OPERATOR_COOLDOWN_SEC - (now - last_call))
+        minutes, seconds = divmod(remaining, 60)
+        await callback_query.answer(
+            f"Запрос уже отправлен. Повторить можно через {minutes} мин. {seconds} сек.",
+            show_alert=True,
+        )
+        return
+
+    await state.update_data(operator_last_call=now)
+
     await callback_query.message.answer(
         f"Связаться с оператором: [нажмите здесь](tg://user?id={ADMIN_ID})",
         parse_mode="Markdown"
     )
-    await bot.send_message(
-        ADMIN_ID,
-        f"АДМИН: Пользователь [ID {user_id}](tg://user?id={user_id}) хочет связаться с оператором.",
-        parse_mode="Markdown"
+    participations = get_user_participations_by_telegram_id(user_id)
+    admin_text = build_operator_admin_message(
+        telegram_id=user_id,
+        full_name=callback_query.from_user.full_name,
+        username=callback_query.from_user.username,
+        participations=participations,
     )
+    await bot.send_message(ADMIN_ID, admin_text, parse_mode="Markdown")
     await callback_query.answer()
     
 # # Обработка подтверждения или отклонения заявки администратором

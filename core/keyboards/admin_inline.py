@@ -21,12 +21,15 @@ def generate_admin_menu_keyboard():
     )
     return builder.as_markup()
 
-def create_check_buttons(drawing_id):
+def create_check_buttons(drawing_id, drawing_status=None):
     """Создает кнопки для проверки скриншотов и оплат для выбранного розыгрыша."""
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="🏞Скриншоты", callback_data=f"check_screenshots_{drawing_id}"))
     builder.row(InlineKeyboardButton(text="💰Оплаты", callback_data=f"check_payments_{drawing_id}"))
-    # Кнопка "Назад" для возврата к списку активных розыгрышей
+    if drawing_status in ("active", "ready_to_draw", "upcoming"):
+        builder.row(
+            InlineKeyboardButton(text="📅 Продлить", callback_data=f"extend_drawing_{drawing_id}")
+        )
     builder.row(InlineKeyboardButton(text="⬅️Назад", callback_data="back_to_previous_menu"))
     return builder.as_markup()
 

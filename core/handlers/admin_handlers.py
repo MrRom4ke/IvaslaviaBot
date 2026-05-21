@@ -8,7 +8,7 @@ from aiogram.types import Message, CallbackQuery, FSInputFile
 
 from core.db.applications_crud import update_application_status, \
     increase_attempts, delete_application, get_application_by_user_and_drawing, get_participants_by_status
-from core.db.drawings_crud import create_new_drawing, update_drawings_status, \
+from core.db.drawings_crud import create_new_drawing, update_drawings_status, update_drawing_end_date, \
     get_completed_drawings, get_drawings_by_status, set_winners_count_in_db, get_winners, get_winners_count, \
     set_drawing_status, get_drawing_by_id
 from core.db.winners_crud import add_winner
@@ -18,9 +18,10 @@ from core.keyboards.admin_inline import generate_admin_menu_keyboard, cancel_but
     generate_winner_selection_keyboard
 from core.keyboards.app_inline import create_back_only_keyboard
 from core.keyboards.drawing_inline import generate_drawings_list_keyboard, generate_drawings_keyboard, \
-    generate_complete_drawing_keyboard, generate_completed_drawings_list_keyboard, generate_cancel_drawing_keyboard
+    generate_complete_drawing_keyboard, generate_completed_drawings_list_keyboard, generate_cancel_drawing_keyboard, \
+    generate_single_drawing_keyboard
 from core.utils.menu_utils import update_or_send_message, update_or_send_callback_message
-from core.utils.stateform import ApplicationForm, NewDrawingState
+from core.utils.stateform import ApplicationForm, NewDrawingState, ExtendDrawingState
 from core.keyboards.inline import admin_keyboard
 from config import ADMIN_ID
 
@@ -174,10 +175,11 @@ async def cancel_creation(callback_query: CallbackQuery, state: FSMContext, bot:
     await show_admin_panel(callback_query.message, state)
 
 async def show_active_draws(callback_query: CallbackQuery, state: FSMContext):
-    """Отображает список активных розыгрышей."""
+    """Отображает список активных и ожидающих розыгрышей (в т.ч. для продления)."""
     await state.update_data(previous_menu="active_draws")
+    update_drawings_status()
 
-    drawings = get_drawings_by_status(['upcoming', 'active'])  # Предположим, метод возвращает список активных розыгрышей
+    drawings = get_drawings_by_status(['upcoming', 'active', 'ready_to_draw'])
     if not drawings:
         await callback_query.message.edit_text(
             "Нет активных розыгрышей.",
@@ -187,9 +189,103 @@ async def show_active_draws(callback_query: CallbackQuery, state: FSMContext):
 
     await update_or_send_callback_message(
         callback_query=callback_query,
-        text="Активные розыгрыши:",
+        text="Розыгрыши (активные и ожидающие завершения):",
         reply_markup=generate_drawings_list_keyboard(drawings, show_back_button=True)
     )
+
+
+async def start_extend_drawing(callback_query: CallbackQuery, state: FSMContext):
+    """Запускает продление розыгрыша — ввод новой даты окончания."""
+    if not is_admin(callback_query.from_user.id):
+        await callback_query.answer("Нет доступа.", show_alert=True)
+        return
+
+    drawing_id = int(callback_query.data.split("_")[-1])
+    drawing = get_drawing_by_id(drawing_id)
+    if not drawing:
+        await callback_query.answer("Розыгрыш не найден.", show_alert=True)
+        return
+
+    if drawing["status"] == "completed":
+        await callback_query.answer("Завершённый розыгрыш продлить нельзя.", show_alert=True)
+        return
+
+    await state.update_data(extend_drawing_id=drawing_id)
+    await state.set_state(ExtendDrawingState.waiting_end_date)
+    current_end = datetime.strptime(drawing["end_date"], "%Y-%m-%d %H:%M:%S").strftime("%d.%m.%Y")
+    await callback_query.message.answer(
+        f"Розыгрыш: {drawing['title']}\n"
+        f"Текущая дата окончания: {current_end}\n\n"
+        f"Введите новую дату окончания (dd.mm.yyyy), позже сегодняшнего дня:",
+        reply_markup=cancel_button_keyboard(),
+    )
+    await callback_query.answer()
+
+
+async def set_extend_drawing_end_date(message: Message, state: FSMContext):
+    """Сохраняет новую дату окончания и возвращает розыгрыш в active при необходимости."""
+    if not is_admin(message.from_user.id):
+        await message.answer("У вас нет доступа к этой команде.")
+        await state.clear()
+        return
+
+    data = await state.get_data()
+    drawing_id = data.get("extend_drawing_id")
+    if not drawing_id:
+        await message.answer("Сессия продления истекла. Откройте розыгрыш снова через /admin.")
+        await state.clear()
+        return
+
+    drawing = get_drawing_by_id(drawing_id)
+    if not drawing:
+        await message.answer("Розыгрыш не найден.")
+        await state.clear()
+        return
+
+    try:
+        new_end_date = datetime.strptime(message.text.strip(), "%d.%m.%Y").replace(
+            hour=23, minute=59, second=59
+        )
+    except ValueError:
+        await message.answer(
+            "Некорректный формат даты. Попробуйте снова (dd.mm.yyyy):",
+            reply_markup=cancel_button_keyboard(),
+        )
+        return
+
+    if drawing["start_date"]:
+        start_date = datetime.strptime(drawing["start_date"], "%Y-%m-%d %H:%M:%S")
+        if new_end_date <= start_date:
+            await message.answer(
+                "Дата окончания должна быть позже даты начала. Попробуйте снова:",
+                reply_markup=cancel_button_keyboard(),
+            )
+            return
+
+    if new_end_date <= datetime.now():
+        await message.answer(
+            "Дата окончания должна быть в будущем. Попробуйте снова:",
+            reply_markup=cancel_button_keyboard(),
+        )
+        return
+
+    update_drawing_end_date(drawing_id, new_end_date)
+    update_drawings_status()
+    drawing = get_drawing_by_id(drawing_id)
+
+    status_labels = {
+        "active": "активный",
+        "upcoming": "предстоящий",
+        "ready_to_draw": "ожидает розыгрыша",
+        "completed": "завершён",
+    }
+    status_text = status_labels.get(drawing["status"], drawing["status"])
+
+    await message.answer(
+        f"Розыгрыш «{drawing['title']}» продлён до {new_end_date.strftime('%d.%m.%Y')}.\n"
+        f"Статус в БД: {status_text}."
+    )
+    await state.clear()
 
 async def show_completed_draws(callback_query: CallbackQuery):
     """Отображает список завершенных розыгрышей."""
@@ -213,9 +309,11 @@ async def approve_screenshot(callback_query: CallbackQuery, bot: Bot, state: FSM
     drawing_id, participant_index = map(int, callback_query.data.split("_")[2:])
     participant = get_participants_by_status(drawing_id, 'pending')[participant_index]
     update_application_status(participant['application_id'], status="payment_pending")
-    await bot.send_message(participant['telegram_id'], "Ваша заявка одобрена.\nОплата розыгрыша в меню /start")
-    await state.update_data(selected_drawing_id=drawing_id)
-    await state.set_state(ApplicationForm.WAITING_FOR_PAYMENT_SCREEN)
+    await bot.send_message(
+        participant['telegram_id'],
+        "Ваша заявка одобрена",
+        reply_markup=generate_single_drawing_keyboard(drawing_id),
+    )
     await show_screenshot_review(callback_query, callback_query.bot, state, participant_index)
     await callback_query.answer()
 

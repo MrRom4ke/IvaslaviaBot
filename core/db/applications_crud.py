@@ -155,6 +155,33 @@ def get_participants_by_status(drawing_id, status=None):
     print(f"🔍 DEBUG: Результат get_participants_by_status: {result}")
     return result
 
+def get_user_participations_by_telegram_id(telegram_id):
+    """
+    Возвращает заявки пользователя с названиями и статусами розыгрышей.
+  """
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT
+            a.application_id,
+            a.status AS application_status,
+            a.attempts,
+            a.attempts_payment,
+            a.submitted_at,
+            d.drawing_id,
+            d.title AS drawing_title,
+            d.status AS drawing_status
+        FROM Applications a
+        JOIN Drawings d ON a.drawing_id = d.drawing_id
+        JOIN Users u ON a.user_id = u.user_id
+        WHERE u.telegram_id = ?
+        ORDER BY a.submitted_at DESC
+    """, (telegram_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
 def delete_application(application_id):
     """Удаляет заявку из базы данных."""
     conn = get_connection()

@@ -1,0 +1,8 @@
+[settings]
+TOKEN = your_bot_token_here
+ADMIN_ID = 123456789
+
+[subscription]
+# Обязательные каналы перед участием (через запятую или с новой строки)
+# Формат: username_или_chat_id|Название|ссылка (ссылка опциональна)
+channels = ivaslavskov|Основной канал

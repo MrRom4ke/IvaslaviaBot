@@ -6,14 +6,110 @@ from aiogram.utils.markdown import hbold
 
 from core.db.applications_crud import user_participates_in_drawing, create_application, get_status_counts, \
     get_application_by_user_and_drawing, get_participants_by_status
-from core.db.drawings_crud import get_drawing_by_id, get_drawings_by_status, get_winners
+from core.db.drawings_crud import get_drawing_by_id, get_drawings_by_status, get_winners, update_drawings_status
 from config import ADMIN_ID
 from core.keyboards.admin_inline import create_check_buttons, generate_winners_summary_keyboard
-from core.keyboards.drawing_inline import create_drawing_info_buttons, generate_end_drawings_keyboard, \
-    generate_drawing_summary_keyboard
-from core.utils.menu_utils import update_or_send_callback_message
+from core.keyboards.drawing_inline import create_drawing_info_buttons, create_subscription_keyboard, \
+    generate_end_drawings_keyboard, generate_drawing_summary_keyboard
+from core.utils.menu_utils import safe_edit_callback_message, update_or_send_callback_message
+from core.utils.subscription_utils import get_missing_subscriptions, REQUIRED_CHANNELS
 
 from core.utils.stateform import ApplicationForm
+
+
+def _format_drawing_info_text(drawing: dict) -> str:
+    start_date = (
+        datetime.strptime(drawing["start_date"], "%Y-%m-%d %H:%M:%S").strftime("%d.%m.%Y")
+        if drawing.get("start_date")
+        else "Не указана"
+    )
+    end_date = (
+        datetime.strptime(drawing["end_date"], "%Y-%m-%d %H:%M:%S").strftime("%d.%m.%Y")
+        if drawing.get("end_date")
+        else "Не указана"
+    )
+    return (
+        f"Название: {drawing['title']}\n"
+        f"Описание: {drawing['description']}\n"
+        f"Дата начала: {start_date}\n"
+        f"Дата окончания: {end_date}\n\n"
+    )
+
+
+def _needs_subscription_gate(application) -> bool:
+    """Проверка подписки нужна только при первом участии или повторе после аннулирования."""
+    if not application:
+        return True
+    return application.get("status") == "completed"
+
+
+def _format_subscription_prompt(missing_channels: list[dict]) -> str:
+    lines = ["Для участия в розыгрыше подпишитесь на каналы:", ""]
+    for channel in missing_channels:
+        if channel.get("url"):
+            lines.append(f"• [{channel['title']}]({channel['url']})")
+        else:
+            lines.append(f"• {channel['title']}")
+    lines.append("\nПосле подписки нажмите «Я подписался».")
+    return "\n".join(lines)
+
+
+async def _show_subscription_required(callback_query: CallbackQuery, drawing_id: int, missing_channels: list[dict]):
+    drawing = get_drawing_by_id(drawing_id)
+    prefix = _format_drawing_info_text(drawing) if drawing else ""
+    text = prefix + _format_subscription_prompt(missing_channels)
+    await safe_edit_callback_message(
+        callback_query,
+        text,
+        reply_markup=create_subscription_keyboard(drawing_id, missing_channels),
+        parse_mode="Markdown",
+        disable_web_page_preview=True,
+    )
+
+
+async def _show_participate_offer(callback_query: CallbackQuery, drawing_id: int):
+    drawing = get_drawing_by_id(drawing_id)
+    if not drawing:
+        await safe_edit_callback_message(callback_query, "Информация о розыгрыше не найдена.")
+        return
+    text = _format_drawing_info_text(drawing) + "🔘 У вас нет активной заявки на участие в этом розыгрыше.\n"
+    await safe_edit_callback_message(
+        callback_query,
+        text,
+        reply_markup=create_drawing_info_buttons(drawing_id, "❇️ Принять участие"),
+    )
+
+
+async def _start_new_participation(
+    callback_query: CallbackQuery,
+    state: FSMContext,
+    drawing_id: int,
+    user_id: int,
+    intro_message: str | None = None,
+):
+    from core.db.drawings_crud import check_participant_limit
+
+    can_join, current_count, max_count = check_participant_limit(drawing_id)
+    if not can_join:
+        drawing = get_drawing_by_id(drawing_id)
+        drawing_title = drawing["title"] if drawing else "Неизвестный"
+        await callback_query.message.edit_text(
+            f"❌ К сожалению, в розыгрыше \"{drawing_title}\" уже достигнут лимит участников.\n\n"
+            f"📊 Текущее количество: {current_count}/{max_count}\n"
+            f"🔒 Попробуйте позже, возможно количество участников уменьшится."
+        )
+        return False
+
+    create_application(user_id, drawing_id)
+    drawing = get_drawing_by_id(drawing_id)
+    drawing_title = drawing["title"] if drawing else "Неизвестный"
+    text = intro_message or (
+        f"Отлично! Для участия в розыгрыше \"{drawing_title}\" пришлите один корректный скриншот."
+    )
+    await callback_query.message.edit_text(text)
+    await state.update_data(selected_drawing_id=drawing_id)
+    await state.set_state(ApplicationForm.WAITING_FOR_SCREEN)
+    return True
 
 
 async def view_drawing_info(callback_query: CallbackQuery, state: FSMContext):
@@ -33,17 +129,7 @@ async def view_drawing_info(callback_query: CallbackQuery, state: FSMContext):
     # Получаем заявку пользователя
     application = get_application_by_user_and_drawing(user_id, drawing_id)
 
-    # Форматируем даты
-    start_date = datetime.strptime(drawing['start_date'], "%Y-%m-%d %H:%M:%S").strftime("%d.%m.%Y") if drawing['start_date'] else "Не указана"
-    end_date = datetime.strptime(drawing['end_date'], "%Y-%m-%d %H:%M:%S").strftime("%d.%m.%Y") if drawing['end_date'] else "Не указана"
-
-    # Формируем сообщение с информацией о розыгрыше
-    info_message = (
-        f"Название: {drawing['title']}\n"
-        f"Описание: {drawing['description']}\n"
-        f"Дата начала: {start_date}\n"
-        f"Дата окончания: {end_date}\n\n"
-    )
+    info_message = _format_drawing_info_text(drawing)
 
     # Добавляем информацию о заявке пользователя
     if application:
@@ -81,17 +167,47 @@ async def view_drawing_info(callback_query: CallbackQuery, state: FSMContext):
                 reply_markup=create_drawing_info_buttons(drawing_id, None))
     else:
         await callback_query.message.edit_text(
-            "🔘 У вас нет активной заявки на участие в этом розыгрыше.\n",
-            reply_markup=create_drawing_info_buttons(drawing_id, "❇️ Принять участие"))
+            info_message + "🔘 У вас нет активной заявки на участие в этом розыгрыше.\n",
+            reply_markup=create_drawing_info_buttons(drawing_id, "❇️ Принять участие"),
+        )
+    await callback_query.answer()
+
+
+async def check_subscription_callback(callback_query: CallbackQuery, state: FSMContext):
+    """Повторная проверка подписки после нажатия «Я подписался»."""
+    drawing_id = int(callback_query.data.split("_")[-1])
+    user_id = callback_query.from_user.id
+    bot = callback_query.bot
+
+    if not REQUIRED_CHANNELS:
+        await _show_participate_offer(callback_query, drawing_id)
+        await callback_query.answer()
+        return
+
+    missing = await get_missing_subscriptions(bot, user_id)
+    if missing:
+        await _show_subscription_required(callback_query, drawing_id, missing)
+        await callback_query.answer("Подпишитесь на все каналы из списка.", show_alert=True)
+        return
+
+    await _show_participate_offer(callback_query, drawing_id)
+    await callback_query.answer("Подписки подтверждены. Можно принять участие.")
 
 
 async def continue_drawing(callback_query: CallbackQuery, state: FSMContext):
     """Обрабатывает нажатие кнопки для продолжения участия в розыгрыше."""
     drawing_id = int(callback_query.data.split("_")[-1])
     user_id = callback_query.from_user.id
+    bot = callback_query.bot
 
-    # Получаем текущую заявку пользователя
     application = get_application_by_user_and_drawing(user_id, drawing_id)
+
+    if _needs_subscription_gate(application) and REQUIRED_CHANNELS:
+        missing = await get_missing_subscriptions(bot, user_id)
+        if missing:
+            await _show_subscription_required(callback_query, drawing_id, missing)
+            await callback_query.answer()
+            return
 
     if application:
         status = application["status"]
@@ -134,62 +250,22 @@ async def continue_drawing(callback_query: CallbackQuery, state: FSMContext):
                 parse_mode="Markdown"
             )
         elif status == "completed":
-            # Заявка аннулирована - пользователь может попробовать снова
-            # Проверяем лимит участников перед созданием новой заявки
-            from core.db.drawings_crud import check_participant_limit
-            can_join, current_count, max_count = check_participant_limit(drawing_id)
-            
-            if not can_join:
-                drawing = get_drawing_by_id(drawing_id)
-                drawing_title = drawing['title'] if drawing else "Неизвестный"
-                await callback_query.message.edit_text(
-                    f"❌ К сожалению, в розыгрыше \"{drawing_title}\" уже достигнут лимит участников.\n\n"
-                    f"📊 Текущее количество: {current_count}/{max_count}\n"
-                    f"🔒 Попробуйте позже, возможно количество участников уменьшится."
-                )
-                return
-            
-            # Создаём новую заявку
-            create_application(user_id, drawing_id)
             drawing = get_drawing_by_id(drawing_id)
-            drawing_title = drawing['title'] if drawing else "Неизвестный"
-
-            await callback_query.message.edit_text(
+            drawing_title = drawing["title"] if drawing else "Неизвестный"
+            intro = (
                 f"🔄 Ваша предыдущая заявка была аннулирована. Попробуйте снова!\n\n"
                 f"Для участия в розыгрыше \"{drawing_title}\" пришлите один корректный скриншот."
             )
-            await state.update_data(selected_drawing_id=drawing_id)
-            await state.set_state(ApplicationForm.WAITING_FOR_SCREEN)
+            await _start_new_participation(callback_query, state, drawing_id, user_id, intro_message=intro)
         else:
             # Любой другой статус
             await callback_query.message.edit_text(
                 "Ваша заявка находится в неизвестном состоянии. Пожалуйста, свяжитесь с поддержкой."
             )
     else:
-        # Проверяем лимит участников перед созданием заявки
-        from core.db.drawings_crud import check_participant_limit
-        can_join, current_count, max_count = check_participant_limit(drawing_id)
-        
-        if not can_join:
-            drawing = get_drawing_by_id(drawing_id)
-            drawing_title = drawing['title'] if drawing else "Неизвестный"
-            await callback_query.message.edit_text(
-                f"❌ К сожалению, в розыгрыше \"{drawing_title}\" уже достигнут лимит участников.\n\n"
-                f"📊 Текущее количество: {current_count}/{max_count}\n"
-                f"🔒 Попробуйте позже, возможно количество участников уменьшится. "
-            )
-            return
-        
-        # Создаём новую заявку, если её нет и есть место
-        create_application(user_id, drawing_id)
-        drawing = get_drawing_by_id(drawing_id)
-        drawing_title = drawing['title'] if drawing else "Неизвестный"
+        await _start_new_participation(callback_query, state, drawing_id, user_id)
 
-        await callback_query.message.edit_text(
-            f"Отлично! Для участия в розыгрыше \"{drawing_title}\" пришлите один корректный скриншот."
-        )
-        await state.update_data(selected_drawing_id=drawing_id)
-        await state.set_state(ApplicationForm.WAITING_FOR_SCREEN)
+    await callback_query.answer()
 
 
 async def show_drawing_info(callback_query: CallbackQuery, state: FSMContext):
@@ -243,14 +319,19 @@ async def show_drawing_info(callback_query: CallbackQuery, state: FSMContext):
         f"```"
     )
 
-    await update_or_send_callback_message(callback_query, info_message, reply_markup=create_check_buttons(drawing_id), parse_mode="Markdown")
+    await update_or_send_callback_message(
+        callback_query,
+        info_message,
+        reply_markup=create_check_buttons(drawing_id, drawing.get("status")),
+        parse_mode="Markdown",
+    )
 
 
 async def handle_end_draw_callback(query: CallbackQuery, state: FSMContext):
     """Обрабатывает нажатие кнопки завершения розыгрыша."""
     await state.update_data(previous_menu="admin_panel")
 
-    # Получаем список розыгрышей в статусе ready_to_draw
+    update_drawings_status()
     drawings = get_drawings_by_status(['ready_to_draw'])
 
     if not drawings:

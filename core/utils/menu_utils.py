@@ -1,5 +1,10 @@
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
+
+
+def _is_message_not_modified_error(error: TelegramBadRequest) -> bool:
+    return bool(error.message and "message is not modified" in error.message)
 
 
 async def back_to_previous_menu(callback_query: CallbackQuery, state: FSMContext):
@@ -40,14 +45,42 @@ async def update_or_send_message(message: Message, text: str, reply_markup=None)
         await message.answer(text=text, reply_markup=reply_markup)
 
 
+async def safe_edit_callback_message(
+    callback_query: CallbackQuery,
+    text: str,
+    reply_markup=None,
+    parse_mode=None,
+    disable_web_page_preview: bool | None = None,
+) -> bool:
+    """
+    Редактирует сообщение колбэка.
+    Возвращает False, если Telegram считает, что контент не изменился.
+    """
+    kwargs = {"text": text, "reply_markup": reply_markup}
+    if parse_mode:
+        kwargs["parse_mode"] = parse_mode
+    if disable_web_page_preview is not None:
+        kwargs["disable_web_page_preview"] = disable_web_page_preview
+    try:
+        await callback_query.message.edit_text(**kwargs)
+        return True
+    except TelegramBadRequest as e:
+        if _is_message_not_modified_error(e):
+            return False
+        raise
+
+
 async def update_or_send_callback_message(callback_query: CallbackQuery, text: str, reply_markup=None, parse_mode=None):
     """
     Универсальная функция для обновления существующего сообщения, вызванного колбэком,
     или отправки нового сообщения, если обновление невозможно.
     """
     try:
-        # Пытаемся отредактировать сообщение
         await callback_query.message.edit_text(text=text, reply_markup=reply_markup, parse_mode=parse_mode)
+    except TelegramBadRequest as e:
+        if _is_message_not_modified_error(e):
+            return
+        raise
     except Exception:
         try:
             # Удаляем текущее сообщение

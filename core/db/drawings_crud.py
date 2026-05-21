@@ -75,6 +75,20 @@ def update_drawings_status():
         WHERE status = 'active' AND end_date <= ?
     """, (current_time,))
 
+    # Продление: возврат в active, если end_date снова в будущем
+    cursor.execute("""
+        UPDATE Drawings
+        SET status = 'active'
+        WHERE status = 'ready_to_draw' AND start_date <= ? AND end_date > ?
+    """, (current_time, current_time))
+
+    # Продление: если дата начала ещё не наступила
+    cursor.execute("""
+        UPDATE Drawings
+        SET status = 'upcoming'
+        WHERE status = 'ready_to_draw' AND start_date > ?
+    """, (current_time,))
+
     # Получаем количество розыгрышей по каждому статусу
     cursor.execute("SELECT COUNT(*) FROM Drawings WHERE status = 'active'")
     active_count = cursor.fetchone()[0]
@@ -97,6 +111,19 @@ def update_drawings_status():
         "ready_to_draw": ready_to_draw_count,
         "completed": completed_count
     }
+
+def update_drawing_end_date(drawing_id: int, end_date: datetime.datetime):
+    """Обновляет дату окончания розыгрыша (продление)."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE Drawings
+        SET end_date = ?
+        WHERE drawing_id = ?
+    """, (end_date, drawing_id))
+    conn.commit()
+    conn.close()
+
 
 def set_drawing_status(drawing_id, status):
     """

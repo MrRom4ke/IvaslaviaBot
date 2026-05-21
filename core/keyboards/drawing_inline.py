@@ -16,11 +16,39 @@ def generate_drawings_keyboard(drawings):
     builder.row(InlineKeyboardButton(text='⬅️Назад', callback_data='back_to_previous_menu'))
     return builder.as_markup()
 
+
+def generate_single_drawing_keyboard(drawing_id: int, button_text: str = "Оплатить участие"):
+    """Клавиатура с одной кнопкой розыгрыша (тот же callback, что в generate_drawings_keyboard)."""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(
+            text=button_text,
+            callback_data=f"view_drawing_{drawing_id}",
+        )
+    )
+    return builder.as_markup()
+
+
 def create_drawing_info_buttons(drawing_id, btn_name):
     """Создает кнопки для управления розыгрышем: 'Принять участие' и 'Вернуться'."""
     builder = InlineKeyboardBuilder()
     if btn_name:
         builder.row(InlineKeyboardButton(text=btn_name, callback_data=f"continue_drawing_{drawing_id}"))
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_previous_menu"))
+    return builder.as_markup()
+
+
+def create_subscription_keyboard(drawing_id: int, channels: list[dict]):
+    """Ссылки на каналы и повторная проверка подписки."""
+    builder = InlineKeyboardBuilder()
+    for channel in channels:
+        if channel.get("url"):
+            builder.row(
+                InlineKeyboardButton(text=f"📢 {channel['title']}", url=channel["url"])
+            )
+    builder.row(
+        InlineKeyboardButton(text="Я подписался", callback_data=f"check_subscription_{drawing_id}")
+    )
     builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_previous_menu"))
     return builder.as_markup()
 

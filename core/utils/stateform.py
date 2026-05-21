@@ -10,3 +10,7 @@ class NewDrawingState(StatesGroup):
     start_date = State()
     end_date = State()
     max_participants = State()
+
+
+class ExtendDrawingState(StatesGroup):
+    waiting_end_date = State()

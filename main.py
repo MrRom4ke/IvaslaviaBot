@@ -9,13 +9,14 @@ from aiogram.filters import Command
 from core.handlers.application_handlers import handle_screenshot, show_screenshot_review, \
     show_payment_review, handle_payment_screen, approve_payment, reject_payment, next_payment, prev_payment
 from core.handlers.drawing_handlers import view_drawing_info, show_drawing_info, continue_drawing, \
-    handle_end_draw_callback, show_drawing_summary, show_drawing_winners
+    check_subscription_callback, handle_end_draw_callback, show_drawing_summary, show_drawing_winners
 from core.utils.menu_utils import back_to_previous_menu
-from core.utils.stateform import NewDrawingState, ApplicationForm
+from core.utils.stateform import NewDrawingState, ApplicationForm, ExtendDrawingState
 from config import TOKEN
 from core.handlers.basic import cmd_start
 from core.handlers.admin_handlers import cmd_admin, handle_admin_callback, set_drawing_title, set_drawing_description, \
     set_drawing_start_date, set_drawing_end_date, set_drawing_max_participants, show_active_draws, show_completed_draws, \
+    start_extend_drawing, set_extend_drawing_end_date, \
     cancel_creation, approve_screenshot, reject_screenshot, next_screenshot, prev_screenshot, set_winners_count, \
     select_winners, next_participant, prev_participant, set_winner, complete_drawing
 from core.handlers.callback import call_operator_callback, inline_handler
@@ -58,6 +59,7 @@ dp.message.register(set_drawing_title, NewDrawingState.title)
 dp.message.register(set_drawing_description, NewDrawingState.description)
 dp.message.register(set_drawing_start_date, NewDrawingState.start_date)
 dp.message.register(set_drawing_end_date, NewDrawingState.end_date)
+dp.message.register(set_extend_drawing_end_date, ExtendDrawingState.waiting_end_date)
 dp.message.register(set_drawing_max_participants, NewDrawingState.max_participants)
 dp.callback_query.register(cancel_creation, lambda c: c.data == "cancel_creation")
 
@@ -76,11 +78,13 @@ dp.callback_query.register(call_operator_callback, lambda c: c.data == 'call_ope
 dp.callback_query.register(handle_admin_callback, lambda c: c.data in ['start_draw', 'manage_draw'])
 
 dp.callback_query.register(view_drawing_info, lambda c: c.data.startswith("view_drawing_"))
+dp.callback_query.register(check_subscription_callback, lambda c: c.data.startswith("check_subscription_"))
 dp.callback_query.register(continue_drawing, lambda c: c.data.startswith("continue_drawing_"))
 
 dp.callback_query.register(show_active_draws, lambda c: c.data == "active_draws")
 dp.callback_query.register(show_completed_draws, lambda c: c.data == "completed_draws")
 dp.callback_query.register(show_drawing_info, lambda c: c.data.startswith("manage_drawing_"))
+dp.callback_query.register(start_extend_drawing, lambda c: c.data.startswith("extend_drawing_"))
 
 dp.callback_query.register(show_screenshot_review, lambda c: c.data.startswith("check_screenshots_"))
 dp.callback_query.register(approve_screenshot, lambda c: c.data.startswith("approve_screenshot_"))
