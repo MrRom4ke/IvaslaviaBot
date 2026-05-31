@@ -1,0 +1,48 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ivaslavia-v2-postgres
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pg_data_v2:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  admin-api:
+    build:
+      context: ..
+      dockerfile: v2/services/admin/Dockerfile
+    container_name: ivaslavia-v2-admin-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+    ports:
+      - "8000:8000"
+    volumes:
+      - storage_files:/app/v2/storage/files
+
+  bot-service:
+    build:
+      context: ..
+      dockerfile: v2/services/bot/Dockerfile
+    container_name: ivaslavia-v2-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      - admin-api
+      - postgres
+    volumes:
+      - storage_files:/app/v2/storage/files
+
+volumes:
+  pg_data_v2:
+  storage_files:

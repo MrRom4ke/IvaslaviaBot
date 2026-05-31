@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IvaslaviaBot Admin Panel</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        h1 {
+            font-size: 24px;
+            color: #2c3e50;
+        }
+
+        .auth-section {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .auth-section input {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        button {
+            padding: 8px 16px;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        button:hover {
+            background: #2980b9;
+        }
+
+        button.danger {
+            background: #e74c3c;
+        }
+
+        button.danger:hover {
+            background: #c0392b;
+        }
+
+        button.success {
+            background: #27ae60;
+        }
+
+        button.success:hover {
+            background: #229954;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .tab {
+            padding: 10px 20px;
+            background: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .tab.active {
+            background: #3498db;
+            color: white;
+        }
+
+        .content {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .queue-item {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            display: grid;
+            grid-template-columns: 200px 1fr 200px;
+            gap: 20px;
+            align-items: center;
+        }
+
+        .queue-item img {
+            width: 100%;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .queue-info h3 {
+            margin-bottom: 10px;
+            color: #2c3e50;
+        }
+
+        .queue-info p {
+            margin: 5px 0;
+            font-size: 14px;
+            color: #666;
+        }
+
+        .queue-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .queue-actions textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            resize: vertical;
+            min-height: 60px;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .status-pending {
+            background: #f39c12;
+            color: white;
+        }
+
+        .status-completed {
+            background: #27ae60;
+            color: white;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .error {
+            background: #e74c3c;
+            color: white;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+
+        .success {
+            background: #27ae60;
+            color: white;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal img {
+            max-width: 90%;
+            max-height: 90%;
+            border-radius: 8px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>IvaslaviaBot Admin Panel</h1>
+            <div class="auth-section" id="authSection">
+                <input type="text" id="username" placeholder="Username">
+                <input type="password" id="password" placeholder="Password">
+                <button onclick="login()">Войти</button>
+            </div>
+            <div class="auth-section hidden" id="loggedInSection">
+                <span id="adminName"></span>
+                <button onclick="logout()">Выйти</button>
+            </div>
+        </header>
+
+        <div id="mainContent" class="hidden">
+            <div class="tabs">
+                <button class="tab active" onclick="switchTab('moderation')">Модерация</button>
+                <button class="tab" onclick="switchTab('drawings')">Розыгрыши</button>
+            </div>
+
+            <div class="content" id="moderationTab">
+                <h2>Очередь модерации</h2>
+                <div style="margin: 20px 0;">
+                    <button onclick="loadQueue('profile')">Профили</button>
+                    <button onclick="loadQueue('payment')">Оплаты</button>
+                    <button onclick="loadQueue(null)">Все</button>
+                </div>
+                <div id="queueContainer"></div>
+            </div>
+
+            <div class="content hidden" id="drawingsTab">
+                <h2>Управление розыгрышами</h2>
+                <div style="margin: 20px 0;">
+                    <button onclick="showCreateDrawingForm()">Создать розыгрыш</button>
+                    <button onclick="loadDrawings('all')">Все</button>
+                    <button onclick="loadDrawings('upcoming')">Предстоящие</button>
+                    <button onclick="loadDrawings('active')">Активные</button>
+                    <button onclick="loadDrawings('completed')">Завершённые</button>
+                </div>
+                <div id="drawingFormContainer" style="display: none; margin: 20px 0; padding: 20px; border: 1px solid #ddd; border-radius: 5px;">
+                    <h3 id="drawingFormTitle">Создать розыгрыш</h3>
+                    <input type="hidden" id="editDrawingId">
+                    <div style="margin: 10px 0;">
+                        <label>Название:</label><br>
+                        <input type="text" id="drawingTitle" style="width: 100%; padding: 5px;">
+                    </div>
+                    <div style="margin: 10px 0;">
+                        <label>Описание:</label><br>
+                        <textarea id="drawingDescription" style="width: 100%; padding: 5px;" rows="3"></textarea>
+                    </div>
+                    <div style="margin: 10px 0;">
+                        <label>Тип:</label><br>
+                        <select id="drawingType" style="padding: 5px;">
+                            <option value="free">Бесплатный</option>
+                            <option value="paid">Платный</option>
+                        </select>
+                    </div>
+                    <div style="margin: 10px 0;">
+                        <label>Статус:</label><br>
+                        <select id="drawingStatus" style="padding: 5px;">
+                            <option value="upcoming">Предстоящий</option>
+                            <option value="active">Активный</option>
+                            <option value="ready_to_draw">Готов к розыгрышу</option>
+                            <option value="completed">Завершён</option>
+                        </select>
+                    </div>
+                    <div style="margin: 10px 0;">
+                        <label>Макс. участников (0 = без ограничений):</label><br>
+                        <input type="number" id="drawingMaxParticipants" value="0" style="padding: 5px;">
+                    </div>
+                    <div style="margin: 10px 0;">
+                        <label>Количество победителей:</label><br>
+                        <input type="number" id="drawingWinnersLimit" value="1" style="padding: 5px;">
+                    </div>
+                    <div style="margin: 10px 0;">
+                        <label>Дата начала (необязательно):</label><br>
+                        <input type="datetime-local" id="drawingStartAt" style="padding: 5px;">
+                    </div>
+                    <div style="margin: 10px 0;">
+                        <label>Дата окончания (необязательно):</label><br>
+                        <input type="datetime-local" id="drawingEndAt" style="padding: 5px;">
+                    </div>
+                    <div style="margin: 10px 0;">
+                        <button onclick="saveDrawing()">Сохранить</button>
+                        <button onclick="cancelDrawingForm()">Отмена</button>
+                    </div>
+                </div>
+                <div id="drawingsContainer"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="imageModal" onclick="closeModal()">
+        <img id="modalImage" src="" alt="Evidence">
+    </div>
+
+    <div class="modal" id="winnerSelectionModal" onclick="closeWinnerModal(event)">
+        <div onclick="event.stopPropagation()" style="background: white; padding: 30px; border-radius: 10px; max-width: 800px; max-height: 80vh; overflow-y: auto;">
+            <h2>Завершить розыгрыш</h2>
+            <p id="winnerSelectionInfo"></p>
+            <div style="margin: 20px 0;">
+                <button onclick="selectWinnersRandom()" style="background: #007bff;">Случайный выбор</button>
+                <button onclick="showManualSelection()" style="background: #6c757d;">Выбрать вручную</button>
+                <button onclick="closeWinnerModal()" style="background: #dc3545;">Отмена</button>
+            </div>
+            <div id="manualSelectionContainer" style="display: none;">
+                <h3>Выберите победителей (<span id="selectedCount">0</span>/<span id="requiredCount">0</span>)</h3>
+                <div id="participantsList"></div>
+                <div style="margin-top: 20px;">
+                    <button onclick="confirmManualSelection()" style="background: #28a745;">Подтвердить выбор</button>
+                    <button onclick="closeWinnerModal()" style="background: #dc3545;">Отмена</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000';
+        let token = localStorage.getItem('admin_token');
+        let currentFilter = null;
+
+        if (token) {
+            showMainContent();
+        }
+
+        async function login() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            try {
+                const response = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+
+                if (!response.ok) throw new Error('Неверные учетные данные');
+
+                const data = await response.json();
+                token = data.access_token;
+                localStorage.setItem('admin_token', token);
+                localStorage.setItem('admin_username', username);
+                showMainContent();
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+
+        function logout() {
+            token = null;
+            localStorage.removeItem('admin_token');
+            localStorage.removeItem('admin_username');
+            document.getElementById('authSection').classList.remove('hidden');
+            document.getElementById('loggedInSection').classList.add('hidden');
+            document.getElementById('mainContent').classList.add('hidden');
+        }
+
+        function showMainContent() {
+            document.getElementById('authSection').classList.add('hidden');
+            document.getElementById('loggedInSection').classList.remove('hidden');
+            document.getElementById('adminName').textContent = localStorage.getItem('admin_username');
+            document.getElementById('mainContent').classList.remove('hidden');
+            loadQueue(null);
+        }
+
+        function switchTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+
+            document.getElementById('moderationTab').classList.add('hidden');
+            document.getElementById('drawingsTab').classList.add('hidden');
+            document.getElementById(tab + 'Tab').classList.remove('hidden');
+
+            // Загружаем данные при переключении на вкладку
+            if (tab === 'drawings') {
+                loadDrawings('all');
+            }
+        }
+
+        async function loadQueue(evidenceType) {
+            currentFilter = evidenceType;
+            const container = document.getElementById('queueContainer');
+            container.innerHTML = '<div class="loading">Загрузка...</div>';
+
+            try {
+                const url = evidenceType
+                    ? `${API_BASE}/moderation/queue?evidence_type=${evidenceType}`
+                    : `${API_BASE}/moderation/queue`;
+
+                const response = await fetch(url, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (!response.ok) throw new Error('Ошибка загрузки очереди');
+
+                const data = await response.json();
+                renderQueue(data.items);
+            } catch (error) {
+                container.innerHTML = `<div class="error">${error.message}</div>`;
+            }
+        }
+
+        function renderQueue(items) {
+            const container = document.getElementById('queueContainer');
+
+            if (items.length === 0) {
+                container.innerHTML = '<p>Очередь пуста</p>';
+                return;
+            }
+
+            container.innerHTML = items.map(item => `
+                <div class="queue-item">
+                    <img src="${API_BASE}/storage/files/${item.file_key}"
+                         alt="Evidence"
+                         onclick="openModal('${API_BASE}/storage/files/${item.file_key}')">
+                    <div class="queue-info">
+                        <h3>${item.drawing_title}</h3>
+                        <p><strong>Пользователь:</strong> ${item.full_name} (@${item.username || 'нет'})</p>
+                        <p><strong>Telegram ID:</strong> ${item.telegram_id}</p>
+                        <p><strong>Тип:</strong> ${item.evidence_type === 'profile' ? 'Профиль' : 'Оплата'}</p>
+                        <p><strong>Попытки профиля:</strong> ${item.profile_attempts_used}/3</p>
+                        <p><strong>Попытки оплаты:</strong> ${item.payment_attempts_used}/3</p>
+                        <p><strong>Дата:</strong> ${new Date(item.evidence_created_at).toLocaleString('ru')}</p>
+                    </div>
+                    <div class="queue-actions">
+                        <textarea id="reason-${item.application_id}" placeholder="Причина отклонения (опционально)"></textarea>
+                        <button class="success" onclick="moderate(${item.application_id}, '${item.evidence_type}', true)">
+                            ✓ Одобрить
+                        </button>
+                        <button class="danger" onclick="moderate(${item.application_id}, '${item.evidence_type}', false)">
+                            ✗ Отклонить
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function moderate(applicationId, evidenceType, approved) {
+            const reason = document.getElementById(`reason-${applicationId}`).value;
+            const endpoint = evidenceType === 'profile' ? 'moderate-profile' : 'moderate-payment';
+
+            try {
+                const response = await fetch(`${API_BASE}/applications/${applicationId}/${endpoint}`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ approved, reason: reason || null })
+                });
+
+                if (!response.ok) throw new Error('Ошибка модерации');
+
+                // Перезагружаем очередь
+                loadQueue(currentFilter);
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+
+        function openModal(imageSrc) {
+            document.getElementById('modalImage').src = imageSrc;
+            document.getElementById('imageModal').classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('imageModal').classList.remove('active');
+        }
+
+        // Управление розыгрышами
+        async function loadDrawings(status = 'all') {
+            try {
+                const url = status === 'all'
+                    ? `${API_BASE}/drawings`
+                    : `${API_BASE}/drawings?status=${status}`;
+
+                const response = await fetch(url, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (!response.ok) throw new Error('Ошибка загрузки розыгрышей');
+
+                const drawings = await response.json();
+                const container = document.getElementById('drawingsContainer');
+
+                if (drawings.length === 0) {
+                    container.innerHTML = '<p>Розыгрышей не найдено</p>';
+                    return;
+                }
+
+                // Загружаем статистику для каждого розыгрыша
+                const drawingsWithStats = await Promise.all(drawings.map(async (d) => {
+                    try {
+                        const statsResponse = await fetch(`${API_BASE}/drawings/${d.id}/stats`, {
+                            headers: { 'Authorization': `Bearer ${token}` }
+                        });
+                        const stats = await statsResponse.json();
+                        return { ...d, stats };
+                    } catch (error) {
+                        return { ...d, stats: null };
+                    }
+                }));
+
+                container.innerHTML = drawingsWithStats.map(d => `
+                    <div style="border: 1px solid #ddd; padding: 15px; margin: 10px 0; border-radius: 5px;">
+                        <h3>${d.title}</h3>
+                        <p><strong>ID:</strong> ${d.id}</p>
+                        <p><strong>Описание:</strong> ${d.description || 'Нет описания'}</p>
+                        <p><strong>Тип:</strong> ${d.drawing_type === 'free' ? 'Бесплатный' : 'Платный'}</p>
+                        <p><strong>Статус:</strong> ${getStatusLabel(d.status)}</p>
+                        <p><strong>Победителей:</strong> ${d.winners_limit}</p>
+                        <p><strong>Начало:</strong> ${d.start_at ? new Date(d.start_at).toLocaleString('ru-RU') : 'Не указано'}</p>
+                        <p><strong>Окончание:</strong> ${d.end_at ? new Date(d.end_at).toLocaleString('ru-RU') : 'Не указано'}</p>
+                        ${d.stats ? `
+                            <div style="margin-top: 15px; padding: 10px; background: #f8f9fa; border-radius: 5px;">
+                                <h4 style="margin-top: 0;">Статистика заявок:</h4>
+                                <p><strong>Количество участников:</strong> ${d.stats.total_participants}</p>
+                                <p><strong>Лимит участников:</strong> ${d.stats.max_participants || 'Без ограничений'}</p>
+                                <p><strong>Ожидают проверки:</strong> ${d.stats.pending}</p>
+                                <p><strong>Одобрено:</strong> ${d.stats.approved}</p>
+                                <p><strong>Отклонено:</strong> ${d.stats.rejected}</p>
+                                <p><strong>Ожидают оплату:</strong> ${d.stats.payment_pending}</p>
+                                <p><strong>Ожидают проверки оплаты:</strong> ${d.stats.payment_bill_loaded}</p>
+                                <p><strong>Подтверждено оплата:</strong> ${d.stats.payment_confirmed}</p>
+                                <p><strong>Оплата отклонена:</strong> ${d.stats.payment_rejected}</p>
+                                <p><strong>Завершено:</strong> ${d.stats.completed}</p>
+                            </div>
+                        ` : ''}
+                        <div style="margin-top: 10px;">
+                            <button onclick="editDrawing(${d.id})">Редактировать</button>
+                            ${d.status === 'ready_to_draw' && d.stats && d.stats.completed > 0 ?
+                                `<button onclick="showWinnerSelection(${d.id}, ${d.winners_limit})" style="background: #28a745;">Завершить розыгрыш</button>` : ''}
+                            <button onclick="deleteDrawing(${d.id})" style="background: #dc3545;">Удалить</button>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+
+        function getStatusLabel(status) {
+            const labels = {
+                'upcoming': 'Предстоящий',
+                'active': 'Активный',
+                'ready_to_draw': 'Готов к розыгрышу',
+                'completed': 'Завершён'
+            };
+            return labels[status] || status;
+        }
+
+        function showCreateDrawingForm() {
+            document.getElementById('drawingFormTitle').textContent = 'Создать розыгрыш';
+            document.getElementById('editDrawingId').value = '';
+            document.getElementById('drawingTitle').value = '';
+            document.getElementById('drawingDescription').value = '';
+            document.getElementById('drawingType').value = 'free';
+            document.getElementById('drawingStatus').value = 'upcoming';
+            document.getElementById('drawingMaxParticipants').value = '0';
+            document.getElementById('drawingWinnersLimit').value = '1';
+            document.getElementById('drawingStartAt').value = '';
+            document.getElementById('drawingEndAt').value = '';
+            document.getElementById('drawingFormContainer').style.display = 'block';
+        }
+
+        async function editDrawing(id) {
+            try {
+                const response = await fetch(`${API_BASE}/drawings`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const drawings = await response.json();
+                const drawing = drawings.find(d => d.id === id);
+
+                if (!drawing) throw new Error('Розыгрыш не найден');
+
+                document.getElementById('drawingFormTitle').textContent = 'Редактировать розыгрыш';
+                document.getElementById('editDrawingId').value = drawing.id;
+                document.getElementById('drawingTitle').value = drawing.title;
+                document.getElementById('drawingDescription').value = drawing.description || '';
+                document.getElementById('drawingType').value = drawing.drawing_type;
+                document.getElementById('drawingStatus').value = drawing.status;
+                document.getElementById('drawingMaxParticipants').value = drawing.max_participants;
+                document.getElementById('drawingWinnersLimit').value = drawing.winners_limit;
+                document.getElementById('drawingStartAt').value = drawing.start_at ? new Date(drawing.start_at).toISOString().slice(0, 16) : '';
+                document.getElementById('drawingEndAt').value = drawing.end_at ? new Date(drawing.end_at).toISOString().slice(0, 16) : '';
+                document.getElementById('drawingFormContainer').style.display = 'block';
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+
+        async function saveDrawing() {
+            const id = document.getElementById('editDrawingId').value;
+            const payload = {
+                title: document.getElementById('drawingTitle').value,
+                description: document.getElementById('drawingDescription').value || null,
+                drawing_type: document.getElementById('drawingType').value,
+                status: document.getElementById('drawingStatus').value,
+                max_participants: parseInt(document.getElementById('drawingMaxParticipants').value),
+                winners_limit: parseInt(document.getElementById('drawingWinnersLimit').value),
+                start_at: document.getElementById('drawingStartAt').value || null,
+                end_at: document.getElementById('drawingEndAt').value || null
+            };
+
+            try {
+                const url = id ? `${API_BASE}/drawings/${id}` : `${API_BASE}/drawings`;
+                const method = id ? 'PATCH' : 'POST';
+
+                const response = await fetch(url, {
+                    method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) throw new Error('Ошибка сохранения розыгрыша');
+
+                cancelDrawingForm();
+                loadDrawings('all');
+                alert(id ? 'Розыгрыш обновлён' : 'Розыгрыш создан');
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+
+        async function deleteDrawing(id) {
+            if (!confirm('Вы уверены, что хотите удалить этот розыгрыш?')) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/drawings/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (!response.ok) throw new Error('Ошибка удаления розыгрыша');
+
+                loadDrawings('all');
+                alert('Розыгрыш удалён');
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+
+        function cancelDrawingForm() {
+            document.getElementById('drawingFormContainer').style.display = 'none';
+        }
+
+        // Выбор победителей
+        let currentDrawingId = null;
+        let currentWinnersLimit = 0;
+        let selectedParticipants = [];
+
+        function showWinnerSelection(drawingId, winnersLimit) {
+            currentDrawingId = drawingId;
+            currentWinnersLimit = winnersLimit;
+            selectedParticipants = [];
+            document.getElementById('winnerSelectionInfo').textContent =
+                `Необходимо выбрать ${winnersLimit} победител${winnersLimit === 1 ? 'я' : 'ей'}`;
+            document.getElementById('manualSelectionContainer').style.display = 'none';
+            document.getElementById('winnerSelectionModal').classList.add('active');
+        }
+
+        function closeWinnerModal(event) {
+            if (!event || event.target.id === 'winnerSelectionModal') {
+                document.getElementById('winnerSelectionModal').classList.remove('active');
+                currentDrawingId = null;
+                currentWinnersLimit = 0;
+                selectedParticipants = [];
+            }
+        }
+
+        async function selectWinnersRandom() {
+            if (!confirm('Выбрать победителей случайным образом?')) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/drawings/${currentDrawingId}/select-winners`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Ошибка выбора победителей');
+                }
+
+                const result = await response.json();
+                alert(`Выбрано ${result.total_selected} победителей!`);
+                closeWinnerModal();
+                loadDrawings('all');
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+
+        async function showManualSelection() {
+            try {
+                const response = await fetch(`${API_BASE}/drawings/${currentDrawingId}/participants`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (!response.ok) throw new Error('Ошибка загрузки участников');
+
+                const participants = await response.json();
+
+                if (participants.length === 0) {
+                    alert('Нет участников со статусом "Завершено"');
+                    return;
+                }
+
+                document.getElementById('requiredCount').textContent = currentWinnersLimit;
+                document.getElementById('selectedCount').textContent = '0';
+
+                const container = document.getElementById('participantsList');
+                container.innerHTML = participants.map(p => `
+                    <div style="border: 1px solid #ddd; padding: 10px; margin: 5px 0; border-radius: 5px;">
+                        <input type="checkbox" id="participant_${p.application_id}"
+                               onchange="toggleParticipant(${p.application_id})"
+                               style="margin-right: 10px;">
+                        <label for="participant_${p.application_id}">
+                            <strong>${p.full_name}</strong>
+                            ${p.username ? `(@${p.username})` : ''}
+                            - Telegram ID: ${p.telegram_id}
+                        </label>
+                    </div>
+                `).join('');
+
+                document.getElementById('manualSelectionContainer').style.display = 'block';
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+
+        function toggleParticipant(applicationId) {
+            const checkbox = document.getElementById(`participant_${applicationId}`);
+
+            if (checkbox.checked) {
+                if (selectedParticipants.length >= currentWinnersLimit) {
+                    checkbox.checked = false;
+                    alert(`Можно выбрать только ${currentWinnersLimit} победителей`);
+                    return;
+                }
+                selectedParticipants.push(applicationId);
+            } else {
+                selectedParticipants = selectedParticipants.filter(id => id !== applicationId);
+            }
+
+            document.getElementById('selectedCount').textContent = selectedParticipants.length;
+        }
+
+        async function confirmManualSelection() {
+            if (selectedParticipants.length !== currentWinnersLimit) {
+                alert(`Необходимо выбрать ровно ${currentWinnersLimit} победителей. Выбрано: ${selectedParticipants.length}`);
+                return;
+            }
+
+            if (!confirm(`Подтвердить выбор ${selectedParticipants.length} победителей?`)) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/drawings/${currentDrawingId}/select-winners-manual`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ application_ids: selectedParticipants })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Ошибка выбора победителей');
+                }
+
+                const result = await response.json();
+                alert(`Выбрано ${result.total_selected} победителей!`);
+                closeWinnerModal();
+                loadDrawings('all');
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+    </script>
+</body>
+</html>
