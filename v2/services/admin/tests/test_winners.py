@@ -3,8 +3,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from v2.services.admin.app.core.security import get_password_hash
-from v2.shared.db.models import Admin, Application, Drawing, User
-from v2.shared.domain.enums import ApplicationStatus, DrawingStatus, DrawingType
+from v2.shared.db.models import Admin, Application, ApplicationEvidence, Drawing, User
+from v2.shared.domain.enums import ApplicationStatus, DrawingStatus, DrawingType, EvidenceType
 
 
 @pytest.fixture
@@ -235,6 +235,48 @@ class TestWinners:
         assert len(data) == 1
         assert data[0]["telegram_id"] == 999999
         assert data[0]["full_name"] == "Winner User"
+
+    def test_get_participants_with_profile_photo(self, client: TestClient, db: Session, admin_token: str):
+        """Участники для ручного выбора содержат URL фото профиля."""
+        drawing = Drawing(
+            title="Manual Drawing",
+            drawing_type=DrawingType.free,
+            status=DrawingStatus.ready_to_draw,
+            max_participants=100,
+            winners_limit=1,
+        )
+        db.add(drawing)
+        db.commit()
+
+        user = User(telegram_id=555555, full_name="Participant", username="participant")
+        db.add(user)
+        db.flush()
+
+        app = Application(
+            user_id=user.id,
+            drawing_id=drawing.id,
+            status=ApplicationStatus.completed,
+        )
+        db.add(app)
+        db.flush()
+
+        db.add(
+            ApplicationEvidence(
+                application_id=app.id,
+                evidence_type=EvidenceType.profile,
+                file_key="profiles/test_photo.jpg",
+            )
+        )
+        db.commit()
+
+        response = client.get(
+            f"/drawings/{drawing.id}/participants",
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["profile_photo_url"] == "/storage/files/profiles/test_photo.jpg"
 
     def test_get_winners_empty(self, client: TestClient, db: Session):
         """Тест получения пустого списка победителей."""

@@ -11,13 +11,17 @@ def apply_profile_moderation(application: Application, drawing: Drawing, approve
         application.blocked_reason = None
         return
 
+    # Увеличиваем счётчик попыток при отклонении
     application.profile_attempts_used += 1
+
     if application.profile_attempts_used >= 3:
+        # После 3 попыток - блокируем
         application.status = ApplicationStatus.rejected
         application.blocked_reason = reason or "Превышен лимит попыток загрузки профиля"
     else:
-        application.status = ApplicationStatus.rejected
-        application.blocked_reason = reason or "Скриншот профиля отклонен"
+        # Пользователь может попробовать снова - возвращаем в pending
+        application.status = ApplicationStatus.pending
+        application.blocked_reason = reason or "Скриншот профиля отклонён"
 
 
 def apply_payment_moderation(application: Application, approved: bool, reason: str | None) -> None:

@@ -1,3 +1,4 @@
+import asyncio
 import os
 from pathlib import Path
 
@@ -8,7 +9,9 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
 from v2.services.admin.app.api.routes.applications import router as applications_router
+from v2.services.admin.app.api.routes.audit import router as audit_router
 from v2.services.admin.app.api.routes.auth import router as auth_router
+from v2.services.admin.app.api.routes.channels import router as channels_router
 from v2.services.admin.app.api.routes.drawings import router as drawings_router
 from v2.services.admin.app.api.routes.health import router as health_router
 from v2.services.admin.app.api.routes.moderation import router as moderation_router
@@ -17,6 +20,9 @@ from v2.services.admin.app.api.routes.storage import router as storage_router
 from v2.services.admin.app.api.routes.tickets import router as tickets_router
 from v2.services.admin.app.api.routes.winners import router as winners_router
 from v2.services.admin.app.core.config import settings
+from v2.services.admin.app.middleware.audit_middleware import AuditMiddleware
+from v2.services.admin.app.services.automation_service import AutomationService
+from v2.shared.db.session import SessionLocal
 
 app = FastAPI(title=settings.app_name)
 
@@ -51,6 +57,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Audit middleware для логирования действий админов
+app.add_middleware(AuditMiddleware)
+
 # Миграции теперь управляются через Alembic.
 # Запуск миграций: alembic upgrade head
 
@@ -67,4 +76,25 @@ app.include_router(moderation_router)
 app.include_router(tickets_router)
 app.include_router(stats_router)
 app.include_router(winners_router)
+app.include_router(channels_router)
 app.include_router(storage_router)
+app.include_router(audit_router)
+
+# Инициализация сервиса автоматизации
+automation_service = AutomationService(db_session_factory=SessionLocal)
+automation_task = None
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Запуск фоновых задач при старте приложения."""
+    global automation_task
+    automation_task = asyncio.create_task(automation_service.start())
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Остановка фоновых задач при завершении приложения."""
+    await automation_service.stop()
+    if automation_task:
+        await automation_task

@@ -9,6 +9,7 @@ from v2.services.admin.app.schemas.applications import (
     UploadEvidenceRequest,
 )
 from v2.services.admin.app.services.application_workflow import apply_payment_moderation, apply_profile_moderation
+from v2.services.admin.app.services.notification_service import notification_service
 from v2.shared.db.models import Application, ApplicationEvidence, Drawing, OperatorTicket, User
 from v2.shared.domain.enums import ApplicationStatus, EvidenceType, TicketStatus
 
@@ -114,7 +115,7 @@ def upload_evidence(application_id: int, payload: UploadEvidenceRequest, db: Ses
 
 
 @router.post("/{application_id}/moderate-profile", response_model=ApplicationResponse)
-def moderate_profile(
+async def moderate_profile(
     application_id: int, payload: ModerateApplicationRequest, db: Session = Depends(get_db)
 ) -> ApplicationResponse:
     application = db.query(Application).filter(Application.id == application_id).one_or_none()
@@ -125,8 +126,14 @@ def moderate_profile(
     if drawing is None:
         raise HTTPException(status_code=404, detail="Drawing not found")
 
+    user = db.query(User).filter(User.id == application.user_id).one_or_none()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Применяем модерацию
     apply_profile_moderation(application, drawing, payload.approved, payload.reason)
 
+    # Создаём тикет, если превышен лимит попыток
     if application.profile_attempts_used >= 3:
         ticket = OperatorTicket(
             user_id=application.user_id,
@@ -138,19 +145,46 @@ def moderate_profile(
 
     db.commit()
     db.refresh(application)
+
+    # Отправляем уведомление пользователю
+    if payload.approved:
+        await notification_service.notify_profile_approved(
+            telegram_id=user.telegram_id,
+            drawing_title=drawing.title,
+            is_paid=(drawing.drawing_type.value == "paid"),
+        )
+    else:
+        attempts_left = 3 - application.profile_attempts_used
+        await notification_service.notify_profile_rejected(
+            telegram_id=user.telegram_id,
+            drawing_title=drawing.title,
+            reason=payload.reason,
+            attempts_left=attempts_left,
+        )
+
     return _to_response(application)
 
 
 @router.post("/{application_id}/moderate-payment", response_model=ApplicationResponse)
-def moderate_payment(
+async def moderate_payment(
     application_id: int, payload: ModerateApplicationRequest, db: Session = Depends(get_db)
 ) -> ApplicationResponse:
     application = db.query(Application).filter(Application.id == application_id).one_or_none()
     if application is None:
         raise HTTPException(status_code=404, detail="Application not found")
 
+    drawing = db.query(Drawing).filter(Drawing.id == application.drawing_id).one_or_none()
+    if drawing is None:
+        raise HTTPException(status_code=404, detail="Drawing not found")
+
+    user = db.query(User).filter(User.id == application.user_id).one_or_none()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Применяем модерацию
     apply_payment_moderation(application, payload.approved, payload.reason)
 
+    # Создаём тикет, если превышен лимит попыток
     if application.payment_attempts_used >= 3:
         ticket = OperatorTicket(
             user_id=application.user_id,
@@ -162,4 +196,20 @@ def moderate_payment(
 
     db.commit()
     db.refresh(application)
+
+    # Отправляем уведомление пользователю
+    if payload.approved:
+        await notification_service.notify_payment_approved(
+            telegram_id=user.telegram_id,
+            drawing_title=drawing.title,
+        )
+    else:
+        attempts_left = 3 - application.payment_attempts_used
+        await notification_service.notify_payment_rejected(
+            telegram_id=user.telegram_id,
+            drawing_title=drawing.title,
+            reason=payload.reason,
+            attempts_left=attempts_left,
+        )
+
     return _to_response(application)

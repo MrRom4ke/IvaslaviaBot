@@ -101,3 +101,37 @@ class Winner(Base):
     drawing_id: Mapped[int] = mapped_column(ForeignKey("drawings.id", ondelete="CASCADE"), index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     selected_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class RequiredChannel(Base):
+    """Обязательные каналы для участия в розыгрыше."""
+
+    __tablename__ = "required_channels"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    drawing_id: Mapped[int] = mapped_column(ForeignKey("drawings.id", ondelete="CASCADE"), index=True)
+    channel_id: Mapped[int] = mapped_column(BigInteger)  # Telegram chat ID канала (с минусом для групп/каналов)
+    channel_username: Mapped[str | None] = mapped_column(String(255), nullable=True)  # @username канала (без @)
+    channel_title: Mapped[str] = mapped_column(String(255))  # Название канала для отображения
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    drawing: Mapped[Drawing] = relationship()
+
+
+class AdminAuditLog(Base):
+    """Аудит-логи действий администраторов."""
+
+    __tablename__ = "admin_audit_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    admin_id: Mapped[int] = mapped_column(ForeignKey("admins.id", ondelete="CASCADE"), index=True)
+    admin_username: Mapped[str] = mapped_column(String(100))
+    action: Mapped[str] = mapped_column(String(100), index=True)
+    entity_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    entity_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    details: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+    admin: Mapped[Admin] = relationship()

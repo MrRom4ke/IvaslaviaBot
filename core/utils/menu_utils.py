@@ -7,6 +7,33 @@ def _is_message_not_modified_error(error: TelegramBadRequest) -> bool:
     return bool(error.message and "message is not modified" in error.message)
 
 
+def _cannot_edit_as_text_error(error: TelegramBadRequest) -> bool:
+    if not error.message:
+        return False
+    msg = error.message.lower()
+    return (
+        "there is no text in the message to edit" in msg
+        or "message can't be edited" in msg
+    )
+
+
+async def _send_new_callback_message(
+    callback_query: CallbackQuery,
+    text: str,
+    reply_markup=None,
+    parse_mode=None,
+):
+    try:
+        await callback_query.message.delete()
+    except Exception:
+        pass
+    await callback_query.message.answer(
+        text=text,
+        reply_markup=reply_markup,
+        parse_mode=parse_mode,
+    )
+
+
 async def back_to_previous_menu(callback_query: CallbackQuery, state: FSMContext):
     """Возвращает пользователя в предыдущее меню."""
     data = await state.get_data()
@@ -67,28 +94,42 @@ async def safe_edit_callback_message(
     except TelegramBadRequest as e:
         if _is_message_not_modified_error(e):
             return False
+        if _cannot_edit_as_text_error(e):
+            await _send_new_callback_message(
+                callback_query, text, reply_markup, parse_mode
+            )
+            return True
         raise
+    except Exception:
+        await _send_new_callback_message(
+            callback_query, text, reply_markup, parse_mode
+        )
+        return True
 
 
 async def update_or_send_callback_message(callback_query: CallbackQuery, text: str, reply_markup=None, parse_mode=None):
     """
     Универсальная функция для обновления существующего сообщения, вызванного колбэком,
-    или отправки нового сообщения, если обновление невозможно.
+    или отправки нового сообщения, если обновление невозможно (например, было фото).
     """
+    replace_needed = False
     try:
-        await callback_query.message.edit_text(text=text, reply_markup=reply_markup, parse_mode=parse_mode)
+        await callback_query.message.edit_text(
+            text=text, reply_markup=reply_markup, parse_mode=parse_mode
+        )
     except TelegramBadRequest as e:
         if _is_message_not_modified_error(e):
-            return
-        raise
+            pass
+        elif _cannot_edit_as_text_error(e):
+            replace_needed = True
+        else:
+            raise
     except Exception:
-        try:
-            # Удаляем текущее сообщение
-            await callback_query.message.delete()
-        except Exception:
-            pass  # Игнорируем ошибки удаления
-        # Отправляем новое сообщение
-        await callback_query.message.answer(text=text, reply_markup=reply_markup, parse_mode=parse_mode)
-    finally:
-        # Закрываем уведомление о callback
-        await callback_query.answer()
+        replace_needed = True
+
+    if replace_needed:
+        await _send_new_callback_message(
+            callback_query, text, reply_markup, parse_mode
+        )
+
+    await callback_query.answer()

@@ -73,7 +73,6 @@ async def show_screenshot_review(callback_query: CallbackQuery, bot: Bot, state:
             text="Нет участников, ожидающих проверки скриншотов.",
             reply_markup=create_back_only_keyboard(drawing_id)
         )
-        await callback_query.answer()
         return
 
     # Если текущий индекс выходит за границы, отображаем первого участника
@@ -87,11 +86,11 @@ async def show_screenshot_review(callback_query: CallbackQuery, bot: Bot, state:
 
     # Проверяем существование файла
     if not os.path.exists(photo_path):
-        await callback_query.message.edit_text(
-            f"Скриншот для участника {participant_index + 1} отсутствует. Пожалуйста, проверьте данные.",
-            reply_markup=create_back_only_keyboard(drawing_id)
+        await update_or_send_callback_message(
+            callback_query=callback_query,
+            text=f"Скриншот для участника {participant_index + 1} отсутствует. Пожалуйста, проверьте данные.",
+            reply_markup=create_back_only_keyboard(drawing_id),
         )
-        await callback_query.answer()
         return
 
     # Отправляем скриншот и кнопки управления
@@ -166,7 +165,6 @@ async def show_payment_review(callback_query: CallbackQuery, bot: Bot, state: FS
             text="Нет участников, ожидающих проверки оплаты.",
             reply_markup=create_back_only_keyboard(drawing_id)
         )
-        await callback_query.answer()
         return
 
     # Если текущий индекс выходит за границы, отображаем первого участника
@@ -180,11 +178,11 @@ async def show_payment_review(callback_query: CallbackQuery, bot: Bot, state: FS
 
     # Проверяем существование файла
     if not os.path.exists(photo_path):
-        await callback_query.message.edit_text(
-            f"Скриншот оплаты для участника {participant_index + 1} отсутствует. Пожалуйста, проверьте данные.",
-            reply_markup=create_back_only_keyboard(drawing_id)
+        await update_or_send_callback_message(
+            callback_query=callback_query,
+            text=f"Скриншот оплаты для участника {participant_index + 1} отсутствует. Пожалуйста, проверьте данные.",
+            reply_markup=create_back_only_keyboard(drawing_id),
         )
-        await callback_query.answer()
         return
 
     # Отправляем скриншот и кнопки управления
