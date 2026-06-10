@@ -46,50 +46,46 @@ class NotificationService:
     ) -> bool:
         """Уведомление об одобрении профиля."""
         if is_paid:
+            from v2.services.admin.app.core.config import settings
+            payment_details = settings.payment_details or "свяжитесь с администратором"
             text = (
-                f"✅ <b>Ваш профиль одобрен!</b>\n\n"
+                f"✅ Ваш профиль одобрен!\n"
                 f"Розыгрыш: {drawing_title}\n\n"
-                f"Теперь необходимо загрузить чек оплаты.\n"
-                f"Используйте команду /payment для загрузки чека."
+                f"💳 Следующий шаг - оплата участия.\n"
+                f"Реквизиты для перевода: {payment_details}\n\n"
+                f"После оплаты загрузите чек через команду /payment"
             )
         else:
             text = (
-                f"✅ <b>Ваш профиль одобрен!</b>\n\n"
-                f"Розыгрыш: {drawing_title}\n\n"
+                f"✅ Ваш профиль одобрен!\n"
+                f"Розыгрыш: {drawing_title}\n"
                 f"Вы успешно участвуете в розыгрыше. Ожидайте результатов!"
             )
         return await self.send_message(telegram_id, text)
 
     async def notify_profile_rejected(
-        self, telegram_id: int, drawing_title: str, reason: Optional[str], attempts_left: int
+        self, telegram_id: int, drawing_title: str, reason: Optional[str]
     ) -> bool:
         """Уведомление об отклонении профиля."""
-        text = (
-            f"❌ <b>Ваш профиль отклонён</b>\n\n"
-            f"Розыгрыш: {drawing_title}\n\n"
-        )
+        text = f"❌ Ваш профиль отклонён\nРозыгрыш: {drawing_title}\n"
 
         if reason:
-            text += f"Причина: {reason}\n\n"
+            text += f"Причина: {reason}\n"
 
-        if attempts_left > 0:
-            text += (
-                f"У вас осталось попыток: {attempts_left}\n"
-                f"Пожалуйста, загрузите новый скриншот профиля через /drawings"
-            )
+        text += "Вы можете подать заявку снова.\n"
+
+        if reason:
+            text += "Для подробной информации о причине отклонения можете обратиться в техподдержку: /operator"
         else:
-            text += (
-                "Вы исчерпали все попытки загрузки профиля.\n"
-                "Обратитесь к оператору через /operator если считаете, что произошла ошибка."
-            )
+            text += "Для уточнения причин отклонения можете обратиться в поддержку: /operator"
 
         return await self.send_message(telegram_id, text)
 
     async def notify_payment_approved(self, telegram_id: int, drawing_title: str) -> bool:
         """Уведомление об одобрении оплаты."""
         text = (
-            f"✅ <b>Оплата подтверждена!</b>\n\n"
-            f"Розыгрыш: {drawing_title}\n\n"
+            f"✅ Оплата подтверждена!\n"
+            f"Розыгрыш: {drawing_title}\n"
             f"Вы успешно участвуете в розыгрыше. Ожидайте результатов!"
         )
         return await self.send_message(telegram_id, text)
@@ -98,10 +94,7 @@ class NotificationService:
         self, telegram_id: int, drawing_title: str, reason: Optional[str], attempts_left: int
     ) -> bool:
         """Уведомление об отклонении оплаты."""
-        text = (
-            f"❌ <b>Оплата отклонена</b>\n\n"
-            f"Розыгрыш: {drawing_title}\n\n"
-        )
+        text = f"❌ Оплата отклонена\nРозыгрыш: {drawing_title}\n\n"
 
         if reason:
             text += f"Причина: {reason}\n\n"
@@ -109,7 +102,8 @@ class NotificationService:
         if attempts_left > 0:
             text += (
                 f"У вас осталось попыток: {attempts_left}\n"
-                f"Пожалуйста, загрузите новый чек оплаты через /payment"
+                f"Ознакомьтесь с причиной отклонения, если остались вопросы обратитесь в поддержку /operator\n"
+                f"Для повторной загрузки чека об оплате воспользуйтесь командой /payment"
             )
         else:
             text += (
@@ -123,16 +117,7 @@ class NotificationService:
         self, telegram_id: int, drawing_title: str, drawing_description: Optional[str]
     ) -> bool:
         """Уведомление победителю."""
-        text = (
-            f"🎉 <b>Поздравляем! Вы победили!</b>\n\n"
-            f"Розыгрыш: {drawing_title}\n\n"
-        )
-
-        if drawing_description:
-            text += f"{drawing_description}\n\n"
-
-        text += "С вами свяжутся для получения приза."
-
+        text = f"🎉 Поздравляем! Вы победили!\nРозыгрыш: {drawing_title}\nС вами свяжутся для получения приза."
         return await self.send_message(telegram_id, text)
 
     async def notify_drawing_completed(

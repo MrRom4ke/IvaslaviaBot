@@ -1,3 +1,6 @@
+from datetime import datetime
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -17,12 +20,16 @@ router = APIRouter(prefix="/applications", tags=["applications"])
 
 
 def _to_response(application: Application) -> ApplicationResponse:
+    drawing_title = None
+    if application.drawing:
+        drawing_title = application.drawing.title
+
     return ApplicationResponse(
         id=application.id,
         user_id=application.user_id,
         drawing_id=application.drawing_id,
+        drawing_title=drawing_title,
         status=application.status,
-        profile_attempts_used=application.profile_attempts_used,
         payment_attempts_used=application.payment_attempts_used,
         blocked_reason=application.blocked_reason,
         created_at=application.created_at,
@@ -36,7 +43,7 @@ def list_applications(
     drawing_id: int | None = None,
     db: Session = Depends(get_db),
 ) -> list[ApplicationResponse]:
-    query = db.query(Application)
+    query = db.query(Application).join(Drawing, Application.drawing_id == Drawing.id)
     if status is not None:
         query = query.filter(Application.status == status)
     if drawing_id is not None:
@@ -50,12 +57,15 @@ def list_my_applications(telegram_id: int, db: Session = Depends(get_db)) -> lis
     user = db.query(User).filter(User.telegram_id == telegram_id).one_or_none()
     if user is None:
         return []
-    rows = db.query(Application).filter(Application.user_id == user.id).order_by(Application.created_at.desc()).all()
+    rows = db.query(Application).join(Drawing, Application.drawing_id == Drawing.id).filter(Application.user_id == user.id).order_by(Application.created_at.desc()).all()
     return [_to_response(row) for row in rows]
 
 
 @router.post("/join", response_model=ApplicationResponse)
 def join_drawing(payload: JoinApplicationRequest, db: Session = Depends(get_db)) -> ApplicationResponse:
+    logger = logging.getLogger(__name__)
+    logger.info(f"JOIN REQUEST: telegram_id={payload.telegram_id}, drawing_id={payload.drawing_id}")
+
     drawing = db.query(Drawing).filter(Drawing.id == payload.drawing_id).one_or_none()
     if drawing is None:
         raise HTTPException(status_code=404, detail="Drawing not found")
@@ -75,13 +85,16 @@ def join_drawing(payload: JoinApplicationRequest, db: Session = Depends(get_db))
         .filter(Application.user_id == user.id, Application.drawing_id == payload.drawing_id)
         .one_or_none()
     )
+    logger.info(f"JOIN: user_id={user.id}, drawing_id={payload.drawing_id}, existing={existing.id if existing else None}, status={existing.status if existing else None}")
     if existing is not None:
+        # Возвращаем существующую заявку независимо от статуса
+        # Бот сам решит, что показать пользователю
         return _to_response(existing)
 
     app = Application(
         user_id=user.id,
         drawing_id=drawing.id,
-        status=ApplicationStatus.pending,
+        status=ApplicationStatus.draft,
     )
     db.add(app)
     db.commit()
@@ -94,6 +107,38 @@ def upload_evidence(application_id: int, payload: UploadEvidenceRequest, db: Ses
     application = db.query(Application).filter(Application.id == application_id).one_or_none()
     if application is None:
         raise HTTPException(status_code=404, detail="Application not found")
+
+    # Проверяем, можно ли загружать скриншот для текущего статуса заявки
+    # Если превышен лимит попыток оплаты - блокируем всё
+    if application.status == ApplicationStatus.payment_rejected:
+        raise HTTPException(
+            status_code=400,
+            detail="Превышен лимит попыток загрузки чека. Обратитесь к оператору через /operator."
+        )
+
+    if payload.evidence_type == EvidenceType.profile:
+        if application.status == ApplicationStatus.pending:
+            raise HTTPException(
+                status_code=400,
+                detail="Ваша заявка уже отправлена на проверку. Дождитесь результата модерации."
+            )
+        if application.status == ApplicationStatus.approved:
+            raise HTTPException(
+                status_code=400,
+                detail="Ваш профиль уже одобрен."
+            )
+        # Статус draft и rejected разрешены для загрузки скриншота
+    elif payload.evidence_type == EvidenceType.payment:
+        if application.status == ApplicationStatus.payment_bill_loaded:
+            raise HTTPException(
+                status_code=400,
+                detail="Ваш чек уже отправлен на проверку. Дождитесь результата модерации."
+            )
+        if application.status == ApplicationStatus.payment_confirmed:
+            raise HTTPException(
+                status_code=400,
+                detail="Ваша оплата уже подтверждена."
+            )
 
     evidence = ApplicationEvidence(
         application_id=application.id,
@@ -130,18 +175,33 @@ async def moderate_profile(
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
 
+    # Получаем последний скриншот профиля для сохранения в контексте отклонения
+    rejected_file_key = None
+    if not payload.approved:
+        latest_evidence = (
+            db.query(ApplicationEvidence)
+            .filter(
+                ApplicationEvidence.application_id == application.id,
+                ApplicationEvidence.evidence_type == EvidenceType.profile
+            )
+            .order_by(ApplicationEvidence.created_at.desc())
+            .first()
+        )
+        if latest_evidence:
+            rejected_file_key = latest_evidence.file_key
+
     # Применяем модерацию
     apply_profile_moderation(application, drawing, payload.approved, payload.reason)
 
-    # Создаём тикет, если превышен лимит попыток
-    if application.profile_attempts_used >= 3:
-        ticket = OperatorTicket(
-            user_id=application.user_id,
-            drawing_id=application.drawing_id,
-            status=TicketStatus.open,
-            message=application.blocked_reason or "Блокировка по профилю после 3 попыток",
-        )
-        db.add(ticket)
+    # Сохраняем контекст отклонения для использования в тикете поддержки
+    if not payload.approved and rejected_file_key:
+        # Сохраним в blocked_reason JSON с информацией для тикета
+        import json
+        application.blocked_reason = json.dumps({
+            "reason": payload.reason or "Скриншот профиля отклонён",
+            "rejected_file_key": rejected_file_key,
+            "rejected_at": datetime.utcnow().isoformat()
+        })
 
     db.commit()
     db.refresh(application)
@@ -154,12 +214,10 @@ async def moderate_profile(
             is_paid=(drawing.drawing_type.value == "paid"),
         )
     else:
-        attempts_left = 3 - application.profile_attempts_used
         await notification_service.notify_profile_rejected(
             telegram_id=user.telegram_id,
             drawing_title=drawing.title,
             reason=payload.reason,
-            attempts_left=attempts_left,
         )
 
     return _to_response(application)
@@ -181,18 +239,32 @@ async def moderate_payment(
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
 
+    # Получаем последний скриншот оплаты для сохранения в контексте отклонения
+    rejected_file_key = None
+    if not payload.approved:
+        latest_evidence = (
+            db.query(ApplicationEvidence)
+            .filter(
+                ApplicationEvidence.application_id == application.id,
+                ApplicationEvidence.evidence_type == EvidenceType.payment
+            )
+            .order_by(ApplicationEvidence.created_at.desc())
+            .first()
+        )
+        if latest_evidence:
+            rejected_file_key = latest_evidence.file_key
+
     # Применяем модерацию
     apply_payment_moderation(application, payload.approved, payload.reason)
 
-    # Создаём тикет, если превышен лимит попыток
-    if application.payment_attempts_used >= 3:
-        ticket = OperatorTicket(
-            user_id=application.user_id,
-            drawing_id=application.drawing_id,
-            status=TicketStatus.open,
-            message=application.blocked_reason or "Блокировка по оплате после 3 попыток",
-        )
-        db.add(ticket)
+    # Если превышен лимит попыток - сохраняем контекст для тикета
+    if not payload.approved and application.payment_attempts_used >= 3 and rejected_file_key:
+        import json
+        application.blocked_reason = json.dumps({
+            "reason": payload.reason or "Превышен лимит попыток загрузки чека оплаты",
+            "rejected_file_key": rejected_file_key,
+            "rejected_at": datetime.utcnow().isoformat()
+        })
 
     db.commit()
     db.refresh(application)

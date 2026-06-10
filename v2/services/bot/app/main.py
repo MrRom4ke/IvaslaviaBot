@@ -47,7 +47,7 @@ def back_to_menu_button() -> InlineKeyboardMarkup:
 
 def _drawings_keyboard(drawings: list[dict]) -> InlineKeyboardMarkup:
     rows = [
-        [InlineKeyboardButton(text=f"{item['title']} ({item['drawing_type']})", callback_data=f"join_{item['id']}")]
+        [InlineKeyboardButton(text=item['title'], callback_data=f"join_{item['id']}")]
         for item in drawings
     ]
     # Добавляем кнопку "Назад"
@@ -59,9 +59,8 @@ def _drawings_keyboard(drawings: list[dict]) -> InlineKeyboardMarkup:
 async def cmd_start(message: Message) -> None:
     """Приветственное сообщение с главным меню."""
     welcome_text = (
-        "👋 <b>Добро пожаловать в IvaslaviaBot!</b>\n\n"
-        "🎉 Здесь вы можете участвовать в розыгрышах и выигрывать призы!\n\n"
-        "Выберите действие:"
+        "👋 <b>Добро пожаловать в IvaslaviaBot!</b>\n"
+        "🎉 Здесь вы можете участвовать в розыгрышах и выигрывать призы!"
     )
     await message.answer(welcome_text, parse_mode="HTML", reply_markup=main_menu_keyboard())
 
@@ -71,9 +70,8 @@ async def cmd_start(message: Message) -> None:
 async def callback_main_menu(callback: CallbackQuery) -> None:
     """Возврат в главное меню."""
     welcome_text = (
-        "👋 <b>Добро пожаловать в IvaslaviaBot!</b>\n\n"
-        "🎉 Здесь вы можете участвовать в розыгрышах и выигрывать призы!\n\n"
-        "Выберите действие:"
+        "👋 <b>Добро пожаловать в IvaslaviaBot!</b>\n"
+        "🎉 Здесь вы можете участвовать в розыгрышах и выигрывать призы!"
     )
     await callback.message.edit_text(welcome_text, parse_mode="HTML", reply_markup=main_menu_keyboard())
     await callback.answer()
@@ -215,7 +213,7 @@ async def join_drawing(callback: CallbackQuery, state: FSMContext) -> None:
         logging.exception("Failed to check subscriptions: %s", exc)
         # Продолжаем без проверки, если не удалось получить каналы
 
-    # Создаём заявку
+    # Создаём заявку или получаем существующую
     payload = {
         "telegram_id": callback.from_user.id,
         "full_name": callback.from_user.full_name,
@@ -227,27 +225,92 @@ async def join_drawing(callback: CallbackQuery, state: FSMContext) -> None:
             response = await client.post(f"{settings.admin_api_base_url}/applications/join", json=payload)
             response.raise_for_status()
             app_data = response.json()
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 400:
+            error_detail = exc.response.json().get("detail", "Не удалось создать заявку.")
+            await callback.message.answer(f"❌ {error_detail}")
+        else:
+            logging.exception("Failed to join drawing: %s", exc)
+            await callback.message.answer("Не удалось создать заявку. Попробуйте позже.")
+        await callback.answer()
+        return
     except Exception as exc:  # noqa: BLE001
         logging.exception("Failed to join drawing: %s", exc)
         await callback.message.answer("Не удалось создать заявку. Попробуйте позже.")
         await callback.answer()
         return
 
-    await state.update_data(application_id=app_data["id"], drawing_id=drawing_id)
-    await state.set_state(ParticipateState.waiting_profile)
+    # Получаем информацию о розыгрыше
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            drawing_response = await client.get(
+                f"{settings.admin_api_base_url}/drawings/{drawing_id}"
+            )
+            drawing_data = drawing_response.json() if drawing_response.status_code == 200 else None
+    except Exception:
+        drawing_data = None
 
-    # Проверяем, это новая заявка или повторная попытка
-    if app_data.get("profile_attempts_used", 0) > 0:
+    drawing_title = drawing_data["title"] if drawing_data else f"розыгрыш #{drawing_id}"
+    is_paid = drawing_data and drawing_data.get("drawing_type") == "paid"
+
+    # Обрабатываем разные статусы заявки
+    app_status = app_data.get("status")
+
+    if app_status == "draft" or app_status == "rejected":
+        # Новая заявка или отклоненная - можно загружать профиль
+        await state.update_data(application_id=app_data["id"], drawing_id=drawing_id)
+        await state.set_state(ParticipateState.waiting_profile)
         await callback.message.answer(
-            f"Вы уже участвуете в этом розыгрыше.\n"
-            f"Попытка #{app_data['profile_attempts_used'] + 1} из 3\n\n"
-            f"Отправьте новый скриншот профиля для проверки."
+            "✅ Заявка создана.\n"
+            "📸 Отправьте скриншот профиля для проверки."
+        )
+    elif app_status == "pending":
+        # Профиль на модерации
+        await callback.message.answer(
+            "⏳ Ваша заявка уже отправлена на проверку.\n"
+            "Дождитесь результата модерации."
+        )
+    elif app_status == "approved" or app_status == "payment_pending":
+        # Профиль одобрен, нужна оплата (для платных) или завершено (для бесплатных)
+        if is_paid:
+            from v2.services.admin.app.core.config import settings as admin_settings
+            payment_details = admin_settings.payment_details or "свяжитесь с администратором"
+            await callback.message.answer(
+                f"✅ Ваш профиль одобрен!\n"
+                f"Розыгрыш: {drawing_title}\n\n"
+                f"💳 Следующий шаг - оплата участия.\n"
+                f"Реквизиты для перевода: {payment_details}\n\n"
+                f"После оплаты загрузите чек через команду /payment"
+            )
+        else:
+            await callback.message.answer(
+                f"✅ Ваш профиль одобрен!\n"
+                f"Розыгрыш: {drawing_title}\n"
+                f"Вы успешно участвуете в розыгрыше. Ожидайте результатов!"
+            )
+    elif app_status == "payment_bill_loaded":
+        # Чек на модерации
+        await callback.message.answer(
+            f"⏳ Ваш чек оплаты уже отправлен на проверку для розыгрыша {drawing_title}.\n"
+            "Дождитесь результата модерации."
+        )
+    elif app_status == "payment_confirmed" or app_status == "completed":
+        # Оплата подтверждена
+        await callback.message.answer(
+            f"✅ Оплата подтверждена!\n"
+            f"Розыгрыш: {drawing_title}\n"
+            f"Вы успешно участвуете в розыгрыше. Ожидайте результатов!"
+        )
+    elif app_status == "payment_rejected":
+        # Превышен лимит попыток оплаты
+        await callback.message.answer(
+            f"🚫 Превышен лимит попыток загрузки чека для розыгрыша {drawing_title}.\n"
+            "Обратитесь к оператору через /operator."
         )
     else:
-        await callback.message.answer(
-            "Заявка создана. Отправьте скриншот профиля для проверки.\n"
-            f"ID заявки: {app_data['id']}"
-        )
+        # Неизвестный статус
+        await callback.message.answer("❌ Неизвестный статус заявки. Обратитесь к администратору.")
+
     await callback.answer()
 
 
@@ -289,10 +352,19 @@ async def upload_profile(message: Message, state: FSMContext, bot: Bot) -> None:
 
     try:
         async with httpx.AsyncClient(timeout=10) as client:
-            await client.post(
+            response = await client.post(
                 f"{settings.admin_api_base_url}/applications/{application_id}/evidences",
                 json=payload,
             )
+            response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 400:
+            error_detail = exc.response.json().get("detail", "Не удалось загрузить скриншот.")
+            await message.answer(f"❌ {error_detail}")
+        else:
+            logging.exception("Failed to upload profile evidence: %s", exc)
+            await message.answer("Не удалось сохранить скриншот. Попробуйте снова.")
+        return
     except Exception as exc:  # noqa: BLE001
         logging.exception("Failed to upload profile evidence: %s", exc)
         await message.answer("Не удалось сохранить скриншот. Попробуйте снова.")
@@ -300,8 +372,7 @@ async def upload_profile(message: Message, state: FSMContext, bot: Bot) -> None:
 
     await message.answer(
         "✅ Скриншот профиля отправлен на модерацию.\n"
-        "⏳ Ожидайте результата проверки.\n\n"
-        "Если розыгрыш платный, после одобрения профиля отправьте чек командой /payment."
+        "⏳ Ожидайте результата проверки."
     )
     await state.clear()
 
@@ -313,9 +384,13 @@ async def cmd_payment(message: Message, state: FSMContext) -> None:
     if pending_payment is None:
         await message.answer("Нет заявок, ожидающих загрузку оплаты.")
         return
+
+    # Используем название розыгрыша из данных заявки
+    drawing_title = pending_payment.get("drawing_title") or f"розыгрыша #{pending_payment['drawing_id']}"
+
     await state.update_data(application_id=pending_payment["id"], drawing_id=pending_payment["drawing_id"])
     await state.set_state(ParticipateState.waiting_payment)
-    await message.answer(f"Отправьте скриншот оплаты для заявки #{pending_payment['id']}.")
+    await message.answer(f"Отправьте скриншот оплаты для конкурса '{drawing_title}'.")
 
 
 @dp.message(ParticipateState.waiting_payment)
@@ -356,10 +431,19 @@ async def upload_payment(message: Message, state: FSMContext, bot: Bot) -> None:
 
     try:
         async with httpx.AsyncClient(timeout=10) as client:
-            await client.post(
+            response = await client.post(
                 f"{settings.admin_api_base_url}/applications/{application_id}/evidences",
                 json=payload,
             )
+            response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 400:
+            error_detail = exc.response.json().get("detail", "Не удалось загрузить чек.")
+            await message.answer(f"❌ {error_detail}")
+        else:
+            logging.exception("Failed to upload payment evidence: %s", exc)
+            await message.answer("Не удалось сохранить чек. Попробуйте снова.")
+        return
     except Exception as exc:  # noqa: BLE001
         logging.exception("Failed to upload payment evidence: %s", exc)
         await message.answer("Не удалось сохранить чек. Попробуйте снова.")
@@ -379,12 +463,41 @@ async def cmd_operator(message_or_callback) -> None:
     full_name = message_or_callback.from_user.full_name
     username = message_or_callback.from_user.username
 
+    # Проверяем наличие недавних отклонённых заявок
+    rejected_app = None
+    rejection_context = None
+
+    try:
+        apps = await _fetch_my_apps(user_id)
+        # Ищем последнюю отклонённую заявку (профиль или оплата)
+        for app in apps:
+            if app.get("status") in ["rejected_profile", "rejected_payment", "payment_rejected"]:
+                rejected_app = app
+                # Пытаемся распарсить blocked_reason как JSON с контекстом отклонения
+                if app.get("blocked_reason"):
+                    try:
+                        import json
+                        rejection_context = json.loads(app["blocked_reason"])
+                    except (json.JSONDecodeError, ValueError):
+                        # Если не JSON, используем как обычный текст
+                        rejection_context = {"reason": app["blocked_reason"]}
+                break
+    except Exception as exc:  # noqa: BLE001
+        logging.exception("Failed to fetch user applications: %s", exc)
+
     payload = {
         "telegram_id": user_id,
         "full_name": full_name,
         "username": username,
         "message": "Запрос оператора из Telegram-бота",
     }
+
+    # Добавляем контекст отклонения, если есть
+    if rejected_app and rejection_context:
+        payload["application_id"] = rejected_app["id"]
+        payload["drawing_id"] = rejected_app["drawing_id"]
+        payload["rejection_reason"] = rejection_context.get("reason")
+        payload["rejected_file_key"] = rejection_context.get("rejected_file_key")
 
     try:
         async with httpx.AsyncClient(timeout=10) as client:
@@ -401,10 +514,14 @@ async def cmd_operator(message_or_callback) -> None:
             await message_or_callback.answer(text, reply_markup=back_to_menu_button())
         return
 
+    context_info = ""
+    if rejected_app:
+        context_info = "\n\n📎 К тикету автоматически прикреплена информация о последнем отклонении."
+
     text = (
         f"✅ <b>Запрос оператору создан!</b>\n\n"
         f"📝 Номер тикета: #{data['ticket_id']}\n"
-        f"👤 Оператор свяжется с вами как можно скорее."
+        f"👤 Оператор свяжется с вами как можно скорее.{context_info}"
     )
     if is_callback:
         await message_or_callback.message.edit_text(text, parse_mode="HTML", reply_markup=back_to_menu_button())
@@ -436,11 +553,12 @@ async def cmd_my_applications(message_or_callback) -> None:
     status_emoji = {
         "pending": "⏳",
         "approved": "✅",
-        "rejected": "❌",
+        "rejected_profile": "❌",
+        "rejected_payment": "❌",
         "payment_pending": "💳",
         "payment_bill_loaded": "🔍",
+        "payment_rejected": "🚫",
         "payment_confirmed": "✅",
-        "payment_rejected": "❌",
         "completed": "🎉",
         "blocked": "🚫",
     }
@@ -452,10 +570,19 @@ async def cmd_my_applications(message_or_callback) -> None:
             f"{emoji} <b>Заявка #{app['id']}</b>\n"
             f"   Розыгрыш: #{app['drawing_id']}\n"
             f"   Статус: {status}\n"
-            f"   Попытки профиля: {app['profile_attempts_used']}/3\n"
         )
+        # Показываем попытки оплаты если есть
         if app.get('payment_attempts_used', 0) > 0:
             text += f"   Попытки оплаты: {app['payment_attempts_used']}/3\n"
+        # Показываем причину отклонения, если есть
+        if app.get('blocked_reason'):
+            try:
+                import json
+                reason_data = json.loads(app['blocked_reason'])
+                reason_text = reason_data.get('reason', app['blocked_reason'])
+            except (json.JSONDecodeError, ValueError):
+                reason_text = app['blocked_reason']
+            text += f"   Причина: {reason_text[:50]}...\n" if len(reason_text) > 50 else f"   Причина: {reason_text}\n"
         text += "\n"
 
     if len(apps) > 10:

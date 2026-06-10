@@ -27,8 +27,8 @@ class ApplicationResponse(BaseModel):
     id: int
     user_id: int
     drawing_id: int
+    drawing_title: str | None = None
     status: ApplicationStatus
-    profile_attempts_used: int
     payment_attempts_used: int
     blocked_reason: str | None
     created_at: datetime
